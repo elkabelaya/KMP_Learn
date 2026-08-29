@@ -44,9 +44,77 @@ Button(
 
 ## 2. Теория: Навигация (Navigation)
 
-В KMP мы используем библиотеку `androidx.navigation.compose`. Она работает одинаково на Android и iOS.
+В KMP мы используем библиотеку **`androidx.navigation.compose`**. Она работает одинаково на Android и iOS.
 
-**Основные понятия:**
+### 🔗 Подключение библиотеки навигации
+
+**⚠️** В Kotlin Multiplatform проектах зависимости должны добавляться **в соответствующих sourceSets** внутри блока `kotlin { ... }`, а не в обычный блок `dependencies`.
+
+#### Вариант 1: Gradle Kotlin DSL (`.gradle.kts`) — Рекомендуемый
+
+Откройте файл `shared/build.gradle.kts` и добавьте зависимости **внутри блока kotlin**:
+
+```kotlin
+dependencies {
+    commonMainImplementation("androidx.navigation:navigation-compose:2.7.6")
+}
+```
+или 
+```
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            // ✅ Добавляем навигацию в commonMain (общий код)
+            implementation("androidx.navigation:navigation-compose:2.7.6")
+        }
+        
+        androidMain.dependencies {
+            // Здесь можно добавить Android-специфичные зависимости
+        }
+        
+        iosMain.dependencies {
+            // Здесь можно добавить iOS-специфичные зависимости
+        }
+    }
+}
+```
+
+**Почему это важно:**
+- `commonMainImplementation` — зависимость будет доступна в общем коде (работает на всех платформах)
+- `androidMainImplementation` — только для Android
+- `iosMainImplementation` — только для iOS
+
+#### Вариант 2: Gradle Version Catalog (`libs.versions.toml`) — Современный подход
+
+Если вы используете **Version Catalog** (рекомендуется для новых проектов), создайте или отредактируйте файл `gradle/libs.versions.toml` в корне проекта:
+
+```toml
+[versions]
+navigation-compose = "2.7.6"
+
+[libraries]
+navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation-compose" }
+```
+
+Затем в `shared/build.gradle.kts` используйте алиас **внутри sourceSets**:
+
+```kotlin
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            // ✅ Используем алиас из Version Catalog
+            implementation(libs.navigation.compose)
+        }
+    }
+}
+```
+
+**Преимущества Version Catalog:**
+- Централизованное управление версиями зависимостей
+- Легко обновлять версии в одном месте
+- Избегает дублирования версий
+
+### Основные понятия навигации:
 1. **`NavHost`**: Главный контейнер, который управляет экранами
 2. **Route (Маршрут)**: Строка-идентификатор экрана (например, `"home"` или `"addHabit/{id}"`)
 3. **`NavController`**: Объект, который переключает экраны (`navController.navigate("addHabit")`)
@@ -270,26 +338,87 @@ fun AppNavHost(
 }
 ```
 
+### Подключение навигации в MainActivity (Android)
+
+Откройте `src/androidMain/kotlin/com/ecotrack/MainActivity.kt`:
+
+```kotlin
+package com.ecotrack
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.navigation.compose.rememberNavController
+
+// Импортируйте общий экран и навигацию
+import com.ecotrack.ui.navigation.AppNavHost
+
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    // Создаем NavController и передаем в NavHost
+                    val navController = rememberNavController()
+                    AppNavHost(navController = navController)
+                }
+            }
+        }
+    }
+}
+```
+
+### Подключение навигации в MainViewController (iOS)
+
+Откройте `src/iosMain/kotlin/com/ecotrack/MainViewController.kt`:
+
+```kotlin
+package com.ecotrack
+
+import androidx.compose.ui.window.ComposeUIViewController
+import androidx.navigation.compose.rememberNavController
+
+// Импортируйте навигацию
+import com.ecotrack.ui.navigation.AppNavHost
+
+fun MainViewController() = ComposeUIViewController { 
+    val navController = rememberNavController()
+    AppNavHost(navController = navController)
+}
+```
+
 ---
 
 ## 📝 Домашнее задание (Модуль 2)
 
 Вам нужно собрать работающий прототип навигации и UI.
 
-### Задание 1: Создайте экран добавления (`AddHabitScreen`)
+### Задание 1: Подключите библиотеку навигации
+- Выберите один из вариантов (Gradle Kotlin DSL или Version Catalog)
+
+### Задание 2: Создайте экран добавления (`AddHabitScreen`)
 - Используйте `Column`, `TextField` (для названия), `ExposedDropdownMenuBox` (или простой `Button` для выбора категории)
 - Добавьте кнопку «Сохранить»
 
-### Задание 2: Свяжите навигацию
+### Задание 3: Свяжите навигацию
 - В `MainActivity.kt` (Android) и `MainViewController.kt` (iOS) создайте `NavController`
 - Передайте его в `AppNavHost`
 - Настройте переходы: с Главной на Добавление (через FAB) и обратно
 
-### Задание 3: Реализуйте список
+### Задание 4: Реализуйте список
 - В `HomeScreen` создайте список из 3-х фиктивных объектов `Habit`
 - Убедитесь, что список прокручивается (LazyColumn)
 
-### Задание 4: Темизация
+### Задание 5: Темизация
 - Добавьте переключатель (Switch) в `HomeScreen`
 - При нажатии меняйте переменную `darkTheme` в `EcoTrackTheme`
 - Фон должен меняться с белого на черный
