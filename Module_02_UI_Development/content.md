@@ -1,15 +1,16 @@
 # 📘 Модуль 2: UI-разработка на Compose Multiplatform
 
 **Добро пожаловать во второй модуль!**  
-В первом модуле мы запустили «Hello World». Теперь пришло время превратить это в настоящее приложение. Мы научимся создавать списки, переходить между экранами и настраивать темы (светлую/темную).
+В первом модуле мы запустили «Hello World». Теперь пришло время превратить это в настоящее приложение. Мы научимся создавать списки, переходить между экранами, настраивать темы и правильно работать с системными панелями.
 
 **Цели модуля:**
 1. Освоить основные компоновки Compose (Column, Row, Box) и модификаторы
 2. Научиться создавать эффективные списки (`LazyColumn`)
 3. Реализовать навигацию между экранами (Navigation Compose)
 4. Настроить тему приложения (Material3) и переключение цветов
+5. **Освоить работу с Scaffold и отступами от системных панелей (Safe Areas)**
 
-**Время выполнения:** ~8–10 часов.
+**Время выполнения:** ~10–12 часов.
 
 ---
 
@@ -56,6 +57,7 @@ Button(
 
 ```kotlin
 dependencies {
+    // ✅ ПРАВИЛЬНО для KMP (внутри kotlin { ... })
     commonMainImplementation("androidx.navigation:navigation-compose:2.7.6")
 }
 ```
@@ -149,7 +151,148 @@ fun EcoTrackTheme(
 
 ---
 
-## 4. Практика: Реализация списка привычек
+## 4. Теория: Scaffold и Safe Areas (Отступы от системных панелей)
+
+### 🏗️ Что такое Scaffold?
+
+**Scaffold** — это базовый компонент Material3, который обеспечивает стандартную структуру экрана приложения. Он автоматически управляет отступами и размещением основных элементов интерфейса.
+
+**Основные компоненты Scaffold:**
+- **`topBar`** — Верхняя панель (AppBar, Toolbar)
+- **`bottomBar`** — Нижняя панель (Bottom Navigation Bar)
+- **`floatingActionButton`** — Плавающая кнопка действия (FAB)
+- **`snackbarHost`** — Хост для уведомлений (Snackbar)
+- **`content`** — Основной контент экрана
+
+### 📱 Проблема Safe Areas (Безопасные зоны)
+
+На разных устройствах есть системные панели, которые могут перекрывать контент:
+
+**Android:**
+- Статус-бар сверху (время, батарея)
+- Навигационные кнопки снизу (или жестовая область)
+
+**iOS:**
+- **Notch** (вырез под камеру) — iPhone X и новее
+- **Dynamic Island** — iPhone 14 Pro и новее
+- **Home Indicator** (полоска снизу) — iPhone без кнопки Home
+
+Если не учесть эти области, ваш контент может быть **недоступен** или **перекрываться**!
+
+### ✅ Решение: WindowInsets и SystemBars
+
+В Compose Multiplatform мы используем **`WindowInsets`** для управления отступами.
+
+#### Вариант 1: Автоматические отступы (Рекомендуется)
+
+Scaffold автоматически добавляет отступы от системных панелей:
+
+```kotlin
+@Composable
+fun HomeScreen() {
+    Scaffold(
+        // topBar автоматически учитывает статус-бар и notch
+        topBar = { TopAppBar(title = { Text("Привычки") }) },
+        
+        // bottomBar автоматически учитывает home indicator на iOS
+        bottomBar = { BottomNavigation() },
+        
+        // content автоматически получает отступы
+        content = { paddingValues ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = paddingValues // ✅ ВАЖНО!
+            ) {
+                // Ваш контент
+            }
+        }
+    )
+}
+```
+
+#### Вариант 2: Ручное управление отступами (Продвинутое)
+
+Если вам нужен полный контроль, используйте `WindowInsets`:
+
+```kotlin
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.navigationBars
+
+@Composable
+fun HomeScreen() {
+    Scaffold(
+        content = { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues) // Применяем отступы от Scaffold
+            ) {
+                Text("Контент с правильными отступами")
+            }
+        }
+    )
+}
+```
+
+### 🚨 Частые ошибки при работе с отступами:
+
+**❌ ОШИБКА 1:** Не использовать `contentPadding` в LazyColumn
+```kotlin
+// Контент будет скрыт под системными панелями!
+LazyColumn(
+    modifier = Modifier.fillMaxSize() // ❌ Нет отступов!
+) { ... }
+```
+
+**✅ ПРАВИЛЬНО:** Передавать `paddingValues` из Scaffold
+```kotlin
+Scaffold(content = { paddingValues ->
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = paddingValues // ✅ Отступы от системных панелей
+    ) { ... }
+})
+```
+
+**❌ ОШИБКА 2:** Дублирование отступов
+```kotlin
+// Не делайте так! Отступы будут добавлены дважды.
+Scaffold(
+    content = { paddingValues ->
+        Column(
+            modifier = Modifier.padding(16.dp) // ❌ Дублирование!
+        ) { ... }
+    }
+)
+```
+
+**✅ ПРАВИЛЬНО:** Использовать только `paddingValues` или добавлять свои отступы внутри
+```kotlin
+Scaffold(
+    content = { paddingValues ->
+        Column(
+            modifier = Modifier.padding(paddingValues) // ✅ Только отступы Scaffold
+        ) { ... }
+    }
+)
+```
+
+### 📋 Когда использовать Scaffold?
+
+**Используйте Scaffold, когда:**
+- ✅ У вас есть AppBar (верхняя панель)
+- ✅ У вас есть Bottom Navigation или Bottom Bar
+- ✅ У вас есть FAB (плавающая кнопка)
+- ✅ Вы хотите автоматически обрабатывать отступы на iOS и Android
+
+**Не используйте Scaffold, когда:**
+- ❌ У вас полноэкранный контент (фото, видео)
+- ❌ Вы создаете кастомный layout без стандартных элементов
+
+---
+
+## 5. Практика: Реализация списка привычек
 
 Согласно дизайну из Figma, нам нужен список карточек.
 
@@ -246,10 +389,7 @@ package com.ecotrack.ui.screens
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -260,44 +400,50 @@ fun HomeScreen(
     onAddClick: () -> Unit,
     onHabitClick: (String) -> Unit // ID привычки
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 80.dp) // Отступ под FAB
-    ) {
-        item {
-            Text(
-                text = "Мои привычки",
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier.padding(16.dp)
+    Scaffold(
+        // Верхняя панель (AppBar)
+        topBar = {
+            TopAppBar(
+                title = { Text("Мои привычки") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
             )
+        },
+        
+        // Плавающая кнопка (FAB) - автоматически позиционируется
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onAddClick,
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(
+                    imageVector = androidx.compose.material.icons.Icons.Default.Add,
+                    contentDescription = "Добавить"
+                )
+            }
+        },
+        
+        // Основной контент
+        content = { paddingValues ->
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = paddingValues 
+            ) {
+                items(habits, key = { it.id }) { habit ->
+                    HabitCard(
+                        habit = habit,
+                        onClick = { onHabitClick(habit.id) }
+                    )
+                }
+            }
         }
-
-        items(habits, key = { it.id }) { habit ->
-            HabitCard(
-                habit = habit,
-                onClick = { onHabitClick(habit.id) }
-            )
-        }
-    }
-
-    // Плавающая кнопка (FAB)
-    FloatingActionButton(
-        onClick = onAddClick,
-        modifier = Modifier
-            .align(Alignment.CenterHorizontally)
-            .padding(bottom = 16.dp)
-    ) {
-        Icon(
-            imageVector = androidx.compose.material.icons.Icons.Default.Add,
-            contentDescription = "Добавить"
-        )
-    }
+    )
 }
 ```
 
----
-
-## 5. Практика: Настройка навигации
+## 6. Практика: Настройка навигации
 
 Теперь свяжем экраны вместе. Создайте файл `commonMain/kotlin/ui/navigation/NavGraph.kt`.
 
@@ -404,34 +550,51 @@ fun MainViewController() = ComposeUIViewController {
 
 ### Задание 1: Подключите библиотеку навигации
 - Выберите один из вариантов (Gradle Kotlin DSL или Version Catalog)
+- Добавьте зависимость `androidx.navigation:navigation-compose:2.7.6` 
 
-### Задание 2: Создайте экран добавления (`AddHabitScreen`)
-- Используйте `Column`, `TextField` (для названия), `ExposedDropdownMenuBox` (или простой `Button` для выбора категории)
+### Задание 2: Создайте экран добавления (`AddHabitScreen`) с Scaffold
+- Используйте `Scaffold` как основной контейнер
+- Добавьте `TopAppBar` с заголовком "Новая привычка" и кнопкой «Назад»
+- Используйте `Column` внутри `content` Scaffold с правильными отступами (`paddingValues`)
+- Добавьте `TextField` (для названия), `ExposedDropdownMenuBox` (или простой `Button` для выбора категории)
 - Добавьте кнопку «Сохранить»
 
 ### Задание 3: Свяжите навигацию
 - В `MainActivity.kt` (Android) и `MainViewController.kt` (iOS) создайте `NavController`
 - Передайте его в `AppNavHost`
 - Настройте переходы: с Главной на Добавление (через FAB) и обратно
+- Убедитесь, что кнопка «Назад» в TopAppBar работает корректно
 
 ### Задание 4: Реализуйте список
-- В `HomeScreen` создайте список из 3-х фиктивных объектов `Habit`
-- Убедитесь, что список прокручивается (LazyColumn)
+- В `HomeScreen` используйте `Scaffold` с `TopAppBar` и `FAB`
+- Создайте список из 3-х фиктивных объектов `Habit` в `LazyColumn`
+- **Важно:** Передавайте `contentPadding = paddingValues` в LazyColumn!
+- Убедитесь, что список не перекрывается системными панелями на iOS (notch, home indicator)
 
 ### Задание 5: Темизация
-- Добавьте переключатель (Switch) в `HomeScreen`
+- Добавьте переключатель (Switch) в `HomeScreen` (можно добавить в TopAppBar или отдельным элементом)
 - При нажатии меняйте переменную `darkTheme` в `EcoTrackTheme`
 - Фон должен меняться с белого на черный
 
+### Задание 6 (Бонус): Проверка отступов
+- Запустите приложение на iOS симуляторе с Notch (iPhone 14/15)
+- Убедитесь, что контент не перекрывается вырезом камеры
+- Запустите на Android эмуляторе с навигационными кнопками
+- Убедитесь, что контент не перекрывается нижней панелью
+
 **Критерий сдачи:**
-- Приложение запускается.
-- Есть список из 3 карточек.
-- При нажатии на FAB открывается экран добавления.
-- Кнопка «Назад» работает корректно (возвращает на список).
-- Переключатель темы меняет цвета интерфейса.
+- ✅ Приложение запускается на Android и iOS.
+- ✅ Есть список из 3 карточек с правильными отступами.
+- ✅ При нажатии на FAB открывается экран добавления.
+- ✅ Кнопка «Назад» работает корректно (возвращает на список).
+- ✅ Переключатель темы меняет цвета интерфейса.
+- ✅ **Контент не перекрывается системными панелями на iOS (notch, home indicator).**
 
 ---
 
-**💡 Совет:** Не пытайтесь сразу делать идеальную верстку. Сначала заставьте кнопки нажиматься и экраны переключаться, потом занимайтесь отступами (padding) и цветами.
+**💡 Советы:**
+1. Не пытайтесь сразу делать идеальную верстку. Сначала заставьте кнопки нажиматься и экраны переключаться, потом занимайтесь отступами (padding) и цветами.
+2. Всегда используйте `Scaffold` для основных экранов — это сэкономит вам много времени на отладку отступов.
+3. Тестируйте приложение на разных устройствах (с notch и без) — отступы могут отличаться!
 
 Удачи! В следующем модуле мы начнем внедрять архитектуру (ViewModel) и отделим логику от UI.
