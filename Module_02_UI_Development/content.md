@@ -45,7 +45,25 @@ Button(
 
 ## 2. Теория: Навигация (Navigation)
 
-В KMP мы используем библиотеку **`androidx.navigation.compose`**. Она работает одинаково на Android и iOS.
+В KMP мы используем type-safe навигацию через библиотеку **`androidx.navigation.compose`**. Она работает одинаково на Android и iOS.
+
+**Type-safe навигация (типобезопасная навигация)** в Kotlin Multiplatform (KMP) — это подход к перемещению между экранами приложения, при котором все аргументы и маршруты проверяются на этапе компиляции, а не во время выполнения приложения. Этот механизм стал официально доступен в Jetpack Compose Navigation (начиная с версии 2.8.0), которая сейчас активно используется и развивается в экосистеме KMP (Compose Multiplatform).
+**Как это было раньше**: маршруты в Compose Navigation задавались в виде обычных строк (String), похожих на веб-ссылки:"profile/{userId}/{username}". Минусы такого подхода: Ошибки в опечатках, ручной парсинг из NavBackStackEntry и приведение к нужным типам, сложно передавать объекты (приходилось сериализовать в JSON строку).
+**Как это работает теперь**: каждый экран и его аргументы описываются с помощью Kotlin-классов или объектов, помеченных аннотацией @Serializable из библиотеки kotlinx.serialization
+```kotlin
+import androidx.navigation.NavArgument
+import kotlinx.serialization.Serializable
+
+@Serializable  
+data class HabitDetailArgs(val habitId: String)
+
+composable<HabitDetailArgs> { args ->  
+    HabitDetailScreen(habitId = args.habitId)
+}
+
+// Навигация:
+navController.navigate(HabitDetailArgs(habitId = "123"))  
+```
 
 ### 🔗 Подключение библиотеки навигации
 
@@ -55,13 +73,6 @@ Button(
 
 Откройте файл `shared/build.gradle.kts` и добавьте зависимости **внутри блока kotlin**:
 
-```kotlin
-dependencies {
-    // ✅ ПРАВИЛЬНО для KMP (внутри kotlin { ... })
-    commonMainImplementation("androidx.navigation:navigation-compose:2.7.6")
-}
-```
-или 
 ```
 kotlin {
     sourceSets {
@@ -80,11 +91,18 @@ kotlin {
     }
 }
 ```
+или в случаях когда невозможно подключить через sourceSets
+```kotlin
+dependencies {
+    // ✅ ПРАВИЛЬНО для KMP (внутри kotlin { ... })
+    commonMainImplementation("androidx.navigation:navigation-compose:2.7.6")
+}
+```
 
 **Почему это важно:**
-- `commonMainImplementation` — зависимость будет доступна в общем коде (работает на всех платформах)
-- `androidMainImplementation` — только для Android
-- `iosMainImplementation` — только для iOS
+- `commonMain.dependencies/commonMainImplementation` — зависимость будет доступна в общем коде (работает на всех платформах)
+- `androidMain.dependencie/androidMainImplementation` — только для Android
+- `iosMain.dependencies/iosMainImplementation` — только для iOS
 
 #### Вариант 2: Gradle Version Catalog (`libs.versions.toml`) — Современный подход
 
@@ -93,9 +111,11 @@ kotlin {
 ```toml
 [versions]
 navigation-compose = "2.7.6"
+serialization = "1.6.2"
 
 [libraries]
 navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigation-compose" }
+serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serialization" }
 ```
 
 Затем в `shared/build.gradle.kts` используйте алиас **внутри sourceSets**:
@@ -106,6 +126,7 @@ kotlin {
         commonMain.dependencies {
             // ✅ Используем алиас из Version Catalog
             implementation(libs.navigation.compose)
+            implementation(libs.serialization.json)
         }
     }
 }
@@ -116,10 +137,56 @@ kotlin {
 - Легко обновлять версии в одном месте
 - Избегает дублирования версий
 
+### 📦 Подключение плагина сериализации (ВАЖНО для type-safe навигации!)
+
+#### Шаг 1: Добавьте плагин в `settings.gradle.kts` (корень проекта)
+***Объявление версии глобально в settings.gradle.kts***
+```
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+        // Фиксируем версию плагина для всего проекта
+        id("org.jetbrains.kotlin.plugin.serialization") version "2.0.21" 
+    }
+}
+```
+
+***или Через Version Catalogs (Рекомендуемый)***
+```
+# toml
+
+[versions]
+kotlin = "2.0.21" # ваша версия Kotlin
+
+[plugins]
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+```
+```
+# build.gradle.kts
+plugins {
+    alias(libs.plugins.kotlin.serialization)
+}
+```
+
+#### Шаг 2: Добавьте зависимость сериализации в `shared/build.gradle.kts`
+```
+kotlin {
+    sourceSets {
+        commonMain.dependencies {
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.2")
+        }
+    }
+}
+```
+
 ### Основные понятия навигации:
 1. **`NavHost`**: Главный контейнер, который управляет экранами
-2. **Route (Маршрут)**: Строка-идентификатор экрана (например, `"home"` или `"addHabit/{id}"`)
-3. **`NavController`**: Объект, который переключает экраны (`navController.navigate("addHabit")`)
+2. **`NavController`**: Объект, который переключает экраны (`navController.navigate("addHabit")`)
+3. **`@Serializable`**: Аннотация для type-safe навигации (NavArg) 
 
 **Проблема KMP:**
 На iOS кнопка «Назад» в навигации работает нативно, но нам нужно убедиться, что Compose-навигация корректно обрабатывает системную кнопку «Back». В CMP это работает из коробки, но важно правильно настроить `NavHost`.
@@ -456,27 +523,27 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 
 // Маршруты
-sealed class Screen(val route: String) {
-    object Home : Screen("home")
-    object AddHabit : Screen("add_habit")
+sealed class Screen() {
+    object Home : Screen
+    object AddHabit : Screen
 }
 
 @Composable
 fun AppNavHost(
     navController: NavHostController,
-    startDestination: String = Screen.Home.route
+    startDestination: Screen = Screen.Home
 ) {
     NavHost(
         navController = navController,
         startDestination = startDestination
     ) {
-        composable(Screen.Home.route) {
+        composable<Screen.Home> {
             // Здесь будет HomeScreen (из модуля 1 мы его уже писали, теперь обновим)
             // Для примера оставим заглушку, но в задании нужно подключить HomeScreen из шага 3
             androidx.compose.material3.Text("Главный экран") 
         }
 
-        composable(Screen.AddHabit.route) {
+        composable<Screen.AddHabit> {
             // Экран добавления (реализуем в задании)
             androidx.compose.material3.Text("Экран добавления")
         }
