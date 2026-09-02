@@ -221,8 +221,35 @@ class AddHabitUseCase(
     }
 }
 ```
+### Шаг 4: Реализуем репозиторий (Data Layer) - пока что заглушка
 
-### Шаг 4: Создаем ViewModel (UI Layer)
+**Файл:** `commonMain/kotlin/com/ecotrack/data/repository/HabitRepositoryImpl.kt`
+
+```kotlin
+class HabitRepositoryImpl: HabitRepository {
+    override fun getHabits(): Flow<Habits> = flow {
+        //здесь возвращаем listOf моковых Habit, реализацию сделаем в следующих модулях
+    }
+
+    override suspend fun add(habit: Habit): Result<Unit> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun update(habit: Habit): Result<Unit> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun delete(id: String): Result<Unit> {
+        TODO("Not yet implemented")
+    }
+
+    override suspend fun getByCategory(category: HabitCategory): Flow<Habits> {
+        TODO("Not yet implemented")
+    }
+}
+```
+
+### Шаг 5: Создаем ViewModel (UI Layer)
 
 **Файл:** `commonMain/kotlin/com/ecotrack/ui/viewmodels/HabitViewModel.kt`
 
@@ -268,25 +295,47 @@ class HabitViewModel(
     fun addHabit(title: String, category: HabitCategory) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            
-            when (val result = addHabitUseCase(title, category)) {
-                is Result.Success -> {
-                    // Обновить список (в модуле 4)
-                    _uiState.value = _uiState.value.copy(isLoading = false)
-                }
-                is Result.Failure -> {
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = result.exception.message
-                    )
-                }
+            addHabitUseCase(title, category).map {
+                _uiState.value = _uiState.value.copy(isLoading = false)
+            }
+            .recover {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = it.toString()
+                )
             }
         }
     }
 }
 ```
 
-### Шаг 5: Настраиваем Koin (DI)
+### Шаг 6: Настраиваем Koin (DI)
+**Файл:** `build.gradle.kts общего модуля (shared)` 
+
+```
+kotlin
+
+sourceSets {
+    commonMain.dependencies {
+        // Базовое ядро Koin
+        implementation("io.insert-koin:koin-core:4.0.0") 
+        // для Compose Multiplatform
+        implementation("io.insert-koin:koin-compose:4.0.0")
+        implementation("io.insert-koin:koin-compose-viewmodel:4.0.0")
+    }
+}
+```
+
+**Файл:** `build.gradle.kts андроид модуля (androidApp)` 
+
+```
+kotlin
+
+dependencies {
+    implementation(libs.koin.core)
+    implementation(libs.koin.android)
+}
+```
 
 **Файл:** `commonMain/kotlin/com/ecotrack/di/AppModule.kt`
 
@@ -298,6 +347,9 @@ import org.koin.dsl.module
 
 // Общий модуль (независимый от платформы)
 val commonModule = module {
+    single<HabitRepository> {
+        HabitRepositoryImpl()
+    }
     // UseCases
     factory { AddHabitUseCase(get()) }
     
@@ -306,16 +358,26 @@ val commonModule = module {
 }
 
 // Ожидаем платформенный модуль
-expect val platformModule(): Module
+expect val platformModule: Module
 
 // Собираем все вместе
 val appModules = listOf(
     commonModule,
-    platformModule()
+    platformModule
 )
+
+// Функция для вызова инициализации на платформах
+fun initKoin(config: KoinAppDeclaration? = null) {
+    startKoin {
+        // Позволяет платформе передать свой Context, если нужно(Андроид)
+        config?.invoke(this)
+        // Подключаем модули
+        modules(appModules)
+    }
+} 
 ```
 
-**Файл:** `androidMain/kotlin/com/ecotrack/di/PlatformModule.kt`
+**Файл:** `androidMain/kotlin/com/ecotrack/di/AppModule.android.kt`
 
 ```kotlin
 package com.ecotrack.di
@@ -324,13 +386,13 @@ import org.koin.core.module.Module
 import org.koin.dsl.module
 
 // Android-специфичные зависимости (БД, API)
-actual val platformModule(): Module = module {
+actual val platformModule: Module = module {
     // Здесь будет репозиторий (в модуле 4)
     single { /* HabitRepositoryImpl(...) */ }
 }
 ```
 
-**Файл:** `iosMain/kotlin/com/ecotrack/di/PlatformModule.kt`
+**Файл:** `iosMain/kotlin/com/ecotrack/di/AppModule.ios.kt`
 
 ```kotlin
 package com.ecotrack.di
@@ -338,7 +400,7 @@ package com.ecotrack.di
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-actual val platformModule(): Module = module {
+actual val platformModule: Module = module {
     // iOS-специфичные зависимости (CoreData, URLSession)
     single { /* HabitRepositoryImpl(...) */ }
 }
@@ -346,33 +408,52 @@ actual val platformModule(): Module = module {
 
 ### Шаг 6: Инициализация Koin в приложении
 
-**Файл:** `androidMain/kotlin/com/ecotrack/MainActivity.kt`
+**Файл:** `androidMain/kotlin/com/ecotrack/AndroidApp.kt`
 
 ```kotlin
 package com.ecotrack
 
-import android.os.Bundle
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.compose.runtime.CompositionLocalProvider
-import org.koin.android.ext.android.get
-import org.koin.core.context.startKoin
-import com.ecotrack.di.appModules
+import android.app.Application
+import org.koin.android.ext.koin.androidContext
+import ru.elkabelaya.ecotracker.di.initKoin
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        
-        // Запускаем Koin
-        startKoin {
-            modules(appModules)
+class AndroidApp: Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        initKoin {
+            androidContext(this@AndroidApp)//регистрируем контекст(только для android)
         }
-        
-        setContent {
-            // Получаем ViewModel через Koin
-            val viewModel: HabitViewModel = get()
-            
-            AppContent(viewModel = viewModel)
+    }
+}
+```
+
+**Файл:** `androidManifest` модуля андроид (androidApp)
+
+```xml
+...
+<application
+        android:name=".AndroidApp" <--тут регистрируем приложение, если не сделано ранее-->
+        ...
+```
+
+**Файл:** `iosMain/kotlin/com/ecotrack/iOSApp.kt`
+
+```swift
+import SwiftUI
+import Shared // импорт общего модуля
+
+@main
+struct iOSApp: App {
+    // Инициализатор структуры вызывается при старте приложения
+    init() {
+        // Название класса формируется из имени Kotlin файла (AppModulet.kt -> AppModuleKt)
+        AppModuleKt.doInitKoin()
+    }
+    
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
         }
     }
 }
