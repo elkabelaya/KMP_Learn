@@ -335,7 +335,6 @@ fun initKoin(sqlDriver: SqlDriver, config: KoinAppDeclaration? = null) {
         // Позволяет платформе передать свой Context, если нужно
         config?.invoke(this)
         // Подключаем модули
-        modules(appModules)
         modules(
             databaseModule(sqlDriver),
             platformModule,
