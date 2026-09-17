@@ -63,24 +63,42 @@
 **Файл:** `shared/build.gradle.kts` (или `app/build.gradle.kts`)
 
 ```kotlin
-dependencies {
-    // SQLDelight для commonMain
-    implementation("app.cash.sqldelight:runtime:2.0.2")
+plugins {
+    id("app.cash.sqldelight:2.3.2")
+}
+
+kotlin {
+    listOf(
+        iosArm64(),
+        iosSimulatorArm64()
+    ).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "Shared"
+            isStatic = true
+            linkerOpts("-lsqlite3")//добавить
+        }
+    }
+}
     
-    // SQLDelight для Android
-    androidImplementation("app.cash.sqldelight:sqlite-driver:2.0.2")
+sourceSets {
+    commonMain.dependencies {
+        implementation("app.cash.sqldelight:runtime:2.3.2")
+    }
+
+    androidMain.dependencies {
+        implementation("app.cash.sqldelight:sqlite-driver:2.3.2")
+    }
     
-    // SQLDelight для iOS (нативный SQLite)
-    iosX64Implementation("app.cash.sqldelight:native-driver:2.0.2")
-    iosArm64Implementation("app.cash.sqldelight:native-driver:2.0.2")
-    iosSimulatorArm64Implementation("app.cash.sqldelight:native-driver:2.0.2")
+    iosMain.dependencies {
+        implementation("app.cash.sqldelight:native-driver:2.3.2")
+    }
 }
 
 // Настройка SQLDelight
 sqldelight {
     databases {
         create("EcoTrackDatabase") {
-            packageName = "com.ecotrack.data.local.db"
+            packageName = "com.ecotrack.db"
         }
     }
 }
@@ -88,7 +106,8 @@ sqldelight {
 
 ### Шаг 2: Создаем схему БД
 
-**Файл:** `src/commonMain/sq/com/ecotrack/db/Habit.sql`
+**Файл:** `src/commonMain/sqldelight/com/ecotrack/db/Habit.sq`
+sqldelight - папка, в которой плагин ищет описание БД, com/ecotrack/db - packageName, заданный в первом шаге
 
 ```sql
 -- Таблица привычек
@@ -138,21 +157,12 @@ type InsertHabitQuery =
     INSERT INTO habit (id, title, category, is_completed, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?);
 ```
+Сгенерированная БД будет храниться по адресу shared/build/generated/sqldelight/
 
-### Шаг 3: Создаем Expect/Actual для драйвера
+### Шаг 3: Создаем SqlDriver для платформ
 
-**Файл:** `src/commonMain/kotlin/com/ecotrack/data/local/DatabaseModule.kt`
 
-```kotlin
-package com.ecotrack.data.local
-
-import app.cash.sqldelight.db.SqlDriver
-
-// Ожидаем драйвер от платформы
-expect fun createDatabaseDriver(): SqlDriver
-```
-
-**Файл:** `src/androidMain/kotlin/com/ecotrack/data/local/DatabaseModule.kt`
+**Файл:** `shared/src/commonMain/kotlin/com/ecotrack/di/AppModule.kt`
 
 ```kotlin
 package com.ecotrack.data.local
@@ -162,9 +172,78 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import com.ecotrack.data.local.db.EcoTrackDatabase
 
-actual fun createDatabaseDriver(): SqlDriver {
-    // В реальном приложении передаем context из Application
-    return AndroidSqliteDriver(EcoTrackDatabase.Schema, /* context */, "ecotrack.db")
+fun databaseModule(sqlDriver: SqlDriver)= module {
+    single<SqlDriver> { sqlDriver }
+}
+
+val commonModule = module {
+    single { EcoTrackDatabase(get()) }
+
+    single<HabitRepository> {
+        HabitRepositoryImpl(get())
+    }
+    
+    // UseCases
+    factory { AddHabitUseCase(get()) }
+    factory { GetHabitsUseCase(get()) }
+
+    // ViewModels
+    viewModel { HabitViewModel(get(), get()) }
+}
+
+fun initKoin(sqlDriver: SqlDriver, config: KoinAppDeclaration? = null) {
+    startKoin {
+        // Позволяет платформе передать свой Context, если нужно
+        config?.invoke(this)
+        // Подключаем модули
+        modules(appModules)
+        modules(
+            databaseModule(sqlDriver),
+            platformModule,
+            commonModule
+        )
+    }
+}
+```
+
+**Файл:** `shared/src/androidMain/kotlin/com/ecotrack/data/local/DatabaseModule.kt`
+
+```kotlin
+package com.ecotrack.data.local
+
+import android.content.Context
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import com.ecotrack.data.local.db.EcoTrackDatabase
+
+fun createDriver(context: Context): SqlDriver {
+    return AndroidSqliteDriver(
+        schema = EcoTrackDatabase.Schema,
+        context = context,
+        name = Database.FILENAME
+    )
+}
+```
+
+**Файл:** `androidApp/src/main/kotlin/com/ecotrack/AndroidApp.kt`
+
+```kotlin
+package com.ecotrack.data.local
+
+import android.content.Context
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import com.ecotrack.data.local.db.EcoTrackDatabase
+
+class AndroidApp: Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        initKoin(createDriver(this)) {
+            androidContext(this@AndroidApp)
+        }
+
+    }
 }
 ```
 
@@ -177,8 +256,15 @@ import app.cash.sqldelight.db.SqlDriver
 import app.cash.sqldelight.driver.native.NativeSqliteDriver
 import com.ecotrack.data.local.db.EcoTrackDatabase
 
-actual fun createDatabaseDriver(): SqlDriver {
-    return NativeSqliteDriver(EcoTrackDatabase.Schema, "ecotrack.db")
+fun createDriver(): SqlDriver {
+    return NativeSqliteDriver(
+        schema = EcoTrackDatabase.Schema.synchronous(),
+        name = Database.FILENAME
+    )
+}
+
+fun initKoinIOS() {
+        initKoin(createDriver())
 }
 ```
 
