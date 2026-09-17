@@ -161,51 +161,6 @@ type InsertHabitQuery =
 
 ### Шаг 3: Создаем SqlDriver для платформ
 
-
-**Файл:** `shared/src/commonMain/kotlin/com/ecotrack/di/AppModule.kt`
-
-```kotlin
-package com.ecotrack.data.local
-
-import android.content.Context
-import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import com.ecotrack.data.local.db.EcoTrackDatabase
-
-fun databaseModule(sqlDriver: SqlDriver)= module {
-    single<SqlDriver> { sqlDriver }
-}
-
-val commonModule = module {
-    single { EcoTrackDatabase(get()) }
-
-    single<HabitRepository> {
-        HabitRepositoryImpl(get())
-    }
-    
-    // UseCases
-    factory { AddHabitUseCase(get()) }
-    factory { GetHabitsUseCase(get()) }
-
-    // ViewModels
-    viewModel { HabitViewModel(get(), get()) }
-}
-
-fun initKoin(sqlDriver: SqlDriver, config: KoinAppDeclaration? = null) {
-    startKoin {
-        // Позволяет платформе передать свой Context, если нужно
-        config?.invoke(this)
-        // Подключаем модули
-        modules(appModules)
-        modules(
-            databaseModule(sqlDriver),
-            platformModule,
-            commonModule
-        )
-    }
-}
-```
-
 **Файл:** `shared/src/androidMain/kotlin/com/ecotrack/data/local/DatabaseModule.kt`
 
 ```kotlin
@@ -225,27 +180,6 @@ fun createDriver(context: Context): SqlDriver {
 }
 ```
 
-**Файл:** `androidApp/src/main/kotlin/com/ecotrack/AndroidApp.kt`
-
-```kotlin
-package com.ecotrack.data.local
-
-import android.content.Context
-import app.cash.sqldelight.db.SqlDriver
-import app.cash.sqldelight.driver.android.AndroidSqliteDriver
-import com.ecotrack.data.local.db.EcoTrackDatabase
-
-class AndroidApp: Application() {
-    override fun onCreate() {
-        super.onCreate()
-
-        initKoin(createDriver(this)) {
-            androidContext(this@AndroidApp)
-        }
-
-    }
-}
-```
 
 **Файл:** `src/iosMain/kotlin/com/ecotrack/data/local/DatabaseModule.kt`
 
@@ -261,10 +195,6 @@ fun createDriver(): SqlDriver {
         schema = EcoTrackDatabase.Schema.synchronous(),
         name = Database.FILENAME
     )
-}
-
-fun initKoinIOS() {
-        initKoin(createDriver())
 }
 ```
 
@@ -381,47 +311,69 @@ import com.ecotrack.domain.repository.HabitRepository
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
-// Модуль для БД (общий код)
-val databaseModule = module {
-    // Создаем драйвер через expect/actual
-    single<SqlDriver> { createDatabaseDriver() }
-    
-    // Создаем базу данных
+fun databaseModule(sqlDriver: SqlDriver)= module {
+    single<SqlDriver> { sqlDriver }
+}
+
+val commonModule = module {
     single { EcoTrackDatabase(get()) }
+
+    single<HabitRepository> {
+        HabitRepositoryImpl(get())
+    }
     
-    // Реализация репозитория
-    single<HabitRepository> { HabitRepositoryImpl(get()) }
+    // UseCases
+    factory { AddHabitUseCase(get()) }
+    factory { GetHabitsUseCase(get()) }
+
+    // ViewModels
+    viewModel { HabitViewModel(get(), get()) }
 }
 
-// Добавляем в платформенный модуль
-expect val platformModule(): Module
-```
-
-**Файл:** `src/androidMain/kotlin/com/ecotrack/di/PlatformModule.kt`
-
-```kotlin
-package com.ecotrack.di
-
-import org.koin.core.module.Module
-import org.koin.dsl.module
-import com.ecotrack.data.local.databaseModule
-
-actual val platformModule(): Module = module {
-    includes(databaseModule)
+fun initKoin(sqlDriver: SqlDriver, config: KoinAppDeclaration? = null) {
+    startKoin {
+        // Позволяет платформе передать свой Context, если нужно
+        config?.invoke(this)
+        // Подключаем модули
+        modules(appModules)
+        modules(
+            databaseModule(sqlDriver),
+            platformModule,
+            commonModule
+        )
+    }
 }
 ```
 
-**Файл:** `src/iosMain/kotlin/com/ecotrack/di/PlatformModule.kt`
+**Файл:** `androidApp/src/main/kotlin/com/ecotrack/AndroidApp.kt`
 
 ```kotlin
-package com.ecotrack.di
+package com.ecotrack.data.local
 
-import org.koin.core.module.Module
-import org.koin.dsl.module
-import com.ecotrack.data.local.databaseModule
+import android.content.Context
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import com.ecotrack.data.local.db.EcoTrackDatabase
 
-actual val platformModule(): Module = module {
-    includes(databaseModule)
+class AndroidApp: Application() {
+    override fun onCreate() {
+        super.onCreate()
+
+        initKoin(createDriver(this)) {
+            androidContext(this@AndroidApp)
+        }
+
+    }
+}
+```
+
+**Файл:** `src/iosMain/kotlin/com/ecotrack/data/local/DatabaseModule.kt`
+
+```kotlin
+...
+
+fun initKoinIOS() {
+        initKoin(createDriver())//обновляем
 }
 ```
 
