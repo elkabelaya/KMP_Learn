@@ -37,165 +37,177 @@
 **Файл:** `shared/build.gradle.kts`
 
 ```kotlin
-dependencies {
-    // Vico для графиков (KMP-совместимая версия)
-    implementation("com.mikepenz:multiplatform-settings-ui:1.2.0") // Для настроек
-    
-    // Альтернатива: использовать Canvas для простых графиков
-    // или создать кастомный компонент на Canvas API
+commonMain.dependencies {
+    implementation("com.patrykandpatrick.vico:multiplatform:2.5.2")
 }
 
-// Для Vico пока нет полной KMP-поддержки, поэтому используем Canvas
 ```
 
-**Примечание:** На момент написания курса Vico не имеет полной KMP-поддержки. Мы создадим кастомный график на Canvas API, который будет работать везде.
 
-### Шаг 2: Создаем кастомный график на Canvas
+### Шаг 2: Создаем график на Vico
 
 **Файл:** `src/commonMain/kotlin/com/ecotrack/ui/components/ActivityChart.kt`
 
 ```kotlin
 package com.ecotrack.ui.components
 
-import androidx.compose.canvas.draw
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.patrykandpatrick.vico.multiplatform.cartesian.CartesianChartHost
+import com.patrykandpatrick.vico.multiplatform.cartesian.axis.HorizontalAxis
+import com.patrykandpatrick.vico.multiplatform.cartesian.axis.VerticalAxis
+import com.patrykandpatrick.vico.multiplatform.cartesian.data.CartesianChartModelProducer
+import com.patrykandpatrick.vico.multiplatform.cartesian.data.lineSeries
+import com.patrykandpatrick.vico.multiplatform.cartesian.layer.LineCartesianLayer
+import com.patrykandpatrick.vico.multiplatform.cartesian.layer.LineCartesianLayer.LineProvider.Companion.series
+import com.patrykandpatrick.vico.multiplatform.cartesian.layer.LineCartesianLayer.Point
+import com.patrykandpatrick.vico.multiplatform.cartesian.layer.LineCartesianLayer.PointProvider.Companion.single
+import com.patrykandpatrick.vico.multiplatform.cartesian.layer.rememberLine
+import com.patrykandpatrick.vico.multiplatform.cartesian.layer.rememberLineCartesianLayer
+import com.patrykandpatrick.vico.multiplatform.cartesian.rememberCartesianChart
+import com.patrykandpatrick.vico.multiplatform.common.Fill
+import com.patrykandpatrick.vico.multiplatform.common.component.rememberLineComponent
+import com.patrykandpatrick.vico.multiplatform.common.component.rememberShapeComponent
+
 
 @Composable
 fun ActivityChart(
-    dataPoints: List<Float>,  // Значения активности за N дней
+    dataPoints: List<Float>, // Значения активности за N дней
     modifier: Modifier = Modifier,
     lineColor: Color = Color(0xFF4CAF50),
     pointColor: Color = Color(0xFF81C784),
-    showPoints: Boolean = true,
-    maxPoints: Int = 7  // Количество точек (например, неделя)
+    showPoints: Boolean = true
 ) {
-    Canvas(
+    if (dataPoints.isEmpty()) return
+
+    // 1. Создаем и обновляем модель данных для Vico
+    val modelProducer = remember { CartesianChartModelProducer() }
+    LaunchedEffect(dataPoints) {
+        if (dataPoints.isNotEmpty()) {
+            modelProducer.runTransaction {
+                lineSeries { series(dataPoints) }
+            }
+        }
+    }
+
+    // 2. Рендерим график
+    CartesianChartHost(
+        chart = rememberCartesianChart(
+            rememberLineCartesianLayer(
+                lineProvider = series(
+                    LineCartesianLayer.rememberLine(
+                        // Настройка цвета и заливки линии
+                        fill = LineCartesianLayer.LineFill.single(Fill(lineColor)),
+                        stroke = LineCartesianLayer.LineStroke.Continuous(thickness = 3.dp),
+                        // Настройка точек (PointProvider)
+                        pointProvider = if (showPoints) {
+                            single(
+                                Point(
+                                    component = rememberShapeComponent(
+                                        shape = CircleShape,
+                                        fill = Fill(pointColor)
+                                    ),
+                                    size = 6.dp
+                                )
+                            )
+                        } else null
+                    )
+                )
+            ),
+            // Левая (вертикальная) ось координат
+            startAxis = VerticalAxis.rememberStart(
+                line = rememberLineComponent(fill = Fill(Color.Gray), thickness = 2.dp),
+                tick = null,
+                guideline = rememberLineComponent(fill = Fill(Color.LightGray.copy(alpha = 0.3f)), thickness = 1.dp)
+            ),
+            // Нижняя (горизонтальная) ось координат
+            bottomAxis = HorizontalAxis.rememberBottom(
+                line = rememberLineComponent(fill = Fill(Color.Gray), thickness = 2.dp),
+                tick = null,
+                guideline = null
+            )
+        ),
+        modelProducer = modelProducer,
         modifier = modifier
             .fillMaxWidth()
             .height(200.dp)
-    ) {
-        if (dataPoints.isEmpty()) return@Canvas
-        
-        val size = Size(size.width, size.height)
-        val padding = 40f
-        val chartWidth = size.width - (padding * 2)
-        val chartHeight = size.height - (padding * 2)
-        
-        // Находим максимальное значение для масштабирования
-        val maxValue = dataPoints.maxOrNull() ?: 1f
-        
-        // Рисуем сетку
-        drawContext.drawRect(
-            color = Color.LightGray.copy(alpha = 0.3f),
-            topLeft = Offset(padding, padding),
-            size = Size(chartWidth, chartHeight),
-            style = Stroke(width = 1f)
-        )
-        
-        // Вычисляем координаты точек
-        val points = mutableListOf<Offset>()
-        val stepX = chartWidth / (maxPoints - 1)
-        
-        dataPoints.forEachIndexed { index, value ->
-            val x = padding + (index * stepX)
-            val y = size.height - padding - ((value / maxValue) * chartHeight)
-            points.add(Offset(x, y))
-        }
-        
-        // Рисуем линию графика
-        if (points.size > 1) {
-            drawContext.drawPolyline(
-                color = lineColor,
-                points = points.toTypedArray(),
-                style = Stroke(width = 3f)
-            )
-        }
-        
-        // Рисуем точки
-        if (showPoints) {
-            points.forEach { point ->
-                drawContext.drawCircle(
-                    color = pointColor,
-                    radius = 6f,
-                    center = point
-                )
-            }
-        }
-        
-        // Рисуем оси
-        drawContext.drawLine(
-            color = Color.Gray,
-            start = Offset(padding, size.height - padding),
-            end = Offset(size.width - padding, size.height - padding),
-            strokeWidth = 2f
-        )
-        
-        drawContext.drawLine(
-            color = Color.Gray,
-            start = Offset(padding, padding),
-            end = Offset(padding, size.height - padding),
-            strokeWidth = 2f
-        )
-    }
+    )
 }
 
 // Экран статистики с графиком
 @Composable
+@Composable
 fun StatisticsScreen(
     weeklyData: List<Float> = listOf(5f, 8f, 12f, 7f, 15f, 10f, 18f),
-    monthlyData: List<Float> = listOf(35f, 42f, 38f, 45f)
+    monthlyData: List<Float> = listOf(35f, 42f, 38f, 45f),
+    onBack: () -> Unit
 ) {
-    androidx.compose.foundation.layout.Column(
-        modifier = androidx.compose.foundation.layout.Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        androidx.compose.material3.Text(
-            text = "Статистика",
-            style = androidx.compose.material3.MaterialTheme.typography.headlineMedium,
-        )
-        
-        androidx.compose.foundation.layout.Spacer(
-            modifier = androidx.compose.foundation.layout.Modifier.height(24.dp)
-        )
-        
-        // График за неделю
-        androidx.compose.material3.Text(
-            text = "Активность за неделю",
-            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-        )
-        
-        ActivityChart(
-            dataPoints = weeklyData,
-            modifier = androidx.compose.foundation.layout.Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
-        )
-        
-        androidx.compose.foundation.layout.Spacer(
-            modifier = androidx.compose.foundation.layout.Modifier.height(32.dp)
-        )
-        
-        // График за месяц
-        androidx.compose.material3.Text(
-            text = "Активность за месяц",
-            style = androidx.compose.material3.MaterialTheme.typography.titleMedium
-        )
-        
-        ActivityChart(
-            dataPoints = monthlyData,
-            modifier = androidx.compose.foundation.layout.Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
-        )
-    }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Статистика") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                ),
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Назад"
+                        )
+                    }
+
+                }
+            )
+        },
+
+        content = { paddingValues ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
+                Text(
+                    text = "Активность за неделю",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                ActivityChart(
+                    dataPoints = weeklyData,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp)
+                )
+
+                Spacer(
+                    modifier = Modifier.height(32.dp)
+                )
+
+                // График за месяц
+                Text(
+                    text = "Активность за месяц",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                ActivityChart(
+                    dataPoints = monthlyData,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp)
+                )
+            }
+        }
+    )
 }
 ```
 
@@ -426,57 +438,51 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-object EcoTrackTypography {
-    val displayLarge = TextStyle(
+val EcoTrackTypography = Typography(
+    displayLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
         fontSize = 32.sp,
         lineHeight = 40.sp,
         letterSpacing = (-0.5).sp
-    )
-    
-    val displayMedium = TextStyle(
+    ),
+    displayMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Bold,
         fontSize = 28.sp,
         lineHeight = 36.sp
-    )
-    
-    val headlineLarge = TextStyle(
+    ),
+    headlineLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.SemiBold,
         fontSize = 24.sp,
         lineHeight = 32.sp
-    )
-    
-    val titleLarge = TextStyle(
+    ),
+    titleLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = 20.sp,
         lineHeight = 28.sp
-    )
-    
-    val bodyLarge = TextStyle(
+    ),
+    bodyLarge = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
         fontSize = 16.sp,
         lineHeight = 24.sp
-    )
-    
-    val bodyMedium = TextStyle(
+    ),
+    bodyMedium = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
         lineHeight = 20.sp
-    )
-    
-    val labelSmall = TextStyle(
+    ),
+    labelSmall = TextStyle(
         fontFamily = FontFamily.Default,
         fontWeight = FontWeight.Medium,
         fontSize = 12.sp,
         lineHeight = 16.sp
     )
-}
+)
 ```
 
 ### Шаг 3: Создаем Theme.kt
@@ -491,16 +497,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.graphics.Color
 
-@Immutable
-data class EcoTrackColors(
-    val primary: Color,
-    val secondary: Color,
-    val background: Color,
-    val surface: Color,
-    val error: Color
-)
 
-val LightEcoTrackColors = EcoTrackColors(
+val LightEcoTrackColors = darkColorScheme(
     primary = LightPrimary,
     secondary = LightSecondary,
     background = LightBackground,
@@ -508,7 +506,7 @@ val LightEcoTrackColors = EcoTrackColors(
     error = LightError
 )
 
-val DarkEcoTrackColors = EcoTrackColors(
+val DarkEcoTrackColors = lightColorScheme(
     primary = DarkPrimary,
     secondary = DarkSecondary,
     background = DarkBackground,
@@ -524,29 +522,8 @@ fun EcoTrackTheme(
     val colors = if (darkTheme) DarkEcoTrackColors else LightEcoTrackColors
     
     MaterialTheme(
-        colorScheme = if (darkTheme) {
-            darkColorScheme(
-                primary = colors.primary,
-                secondary = colors.secondary,
-                background = colors.background,
-                surface = colors.surface,
-                error = colors.error
-            )
-        } else {
-            lightColorScheme(
-                primary = colors.primary,
-                secondary = colors.secondary,
-                background = colors.background,
-                surface = colors.surface,
-                error = colors.error
-            )
-        },
-        typography = Typography(
-            displayLarge = EcoTrackTypography.displayLarge,
-            headlineLarge = EcoTrackTypography.headlineLarge,
-            titleLarge = EcoTrackTypography.titleLarge,
-            bodyLarge = EcoTrackTypography.bodyLarge
-        ),
+        colorScheme = colors,
+        typography = EcoTrackTypography,
         content = content
     )
 }
