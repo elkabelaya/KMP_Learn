@@ -53,11 +53,16 @@ interface NotificationManager {
     suspend fun requestPermission(): Result<Boolean>
     suspend fun sendNotification(
         title: String, 
-        body: String,
-        data: Map<String, String>? = null
+        body: String
     ): Result<Unit>
     
-    fun isPermissionGranted(): Boolean
+    /**
+     * Проверяет, выдано ли разрешение на уведомления.
+     * 
+     * Suspend, потому что на iOS API асинхронный (completion handler).
+     * На Android — синхронный (ContextCompat), но suspend-обёртка допустима.
+     */
+    suspend fun isPermissionGranted(): Boolean
 }
 
 // Ожидаем реализацию от платформы
@@ -72,21 +77,29 @@ expect fun getNotificationManager(): NotificationManager
 package com.ecotrack.platform
 
 import android.Manifest
+import android.app.Activity
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.tasks.await
 
 class AndroidNotificationManager(
-    private val context: Context
+    private val activity: Activity  // Activity нужен для запроса разрешения
 ) : NotificationManager {
+    
+    private val context: Context get() = activity
     
     companion object {
         const val CHANNEL_ID = "ecotrack_channel"
         const val CHANNEL_NAME = "EcoTrack Notifications"
+        private const val REQUEST_CODE_NOTIFICATIONS = 1001
     }
     
     init {
@@ -111,23 +124,57 @@ class AndroidNotificationManager(
         }
     }
     
+    /**
+     * Запрашивает разрешение на отправку уведомлений.
+     * 
+     * Android 13+ (API 33): нужно разрешение POST_NOTIFICATIONS
+     * Android 12 и ниже: разрешение не требуется
+     */
     override suspend fun requestPermission(): Result<Boolean> {
         return try {
-            // Для Android 13+ нужно запрашивать разрешение
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val granted = checkPermission()
-                Result.success(granted)
-            } else {
-                // Android 12 и ниже - разрешения не нужны
-                Result.success(true)
+            // До Android 13 разрешение не нужно
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                return Result.success(true)
             }
+            
+            // Если уже разрешено — не запрашиваем повторно
+            if (isPermissionGranted()) {
+                return Result.success(true)
+            }
+            
+            // Запрашиваем разрешение через системный диалог
+            val granted = suspendCancellableCoroutine { continuation ->
+                ActivityCompat.requestPermissions(
+                    activity,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    REQUEST_CODE_NOTIFICATIONS
+                ) { _, _, grantResults ->
+                    val isGranted = grantResults.isNotEmpty() &&
+                        grantResults[0] == PackageManager.PERMISSION_GRANTED
+                    continuation.resume(isGranted)
+                }
+            }
+            
+            Result.success(granted)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
     
+    /**
+     * Проверяет, разрешены ли уведомления.
+     * 
+     * Для Android 13+ проверяет POST_NOTIFICATIONS через ContextCompat.
+     * Для Android 12 и ниже всегда возвращает true.
+     */
     private fun checkPermission(): Boolean {
-        // Реализация проверки разрешения (упрощенно)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            return ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+        // До Android 13 уведомления не требуют разрешения
         return true
     }
     
@@ -136,6 +183,13 @@ class AndroidNotificationManager(
         body: String,
         data: Map<String, String>?
     ): Result<Unit> = try {
+        // Проверяем разрешение перед отправкой
+        if (!isPermissionGranted()) {
+            return Result.failure(
+                Exception("Notification permission not granted")
+            )
+        }
+        
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_dialog_info) // Замените на ваш иконку
             .setContentTitle(title)
@@ -155,7 +209,7 @@ class AndroidNotificationManager(
         Result.failure(e)
     }
     
-    override fun isPermissionGranted(): Boolean = checkPermission()
+    override suspend fun isPermissionGranted(): Boolean = checkPermission()
     
     // Получение FCM токена для сервера
     suspend fun getFcmToken(): Result<String> = try {
@@ -167,8 +221,10 @@ class AndroidNotificationManager(
 }
 
 actual fun getNotificationManager(): NotificationManager {
-    // В реальном приложении получаем context из Application
-    return AndroidNotificationManager(/* context */)
+    // В реальном приложении Activity передается извне (напр. из Application-класса,
+    // хранящего ссылку на текущий Activity) или через DI-контейнер
+    // return AndroidNotificationManager(currentActivity)
+    throw NotImplementedError("Pass Activity via DI or Application holder")
 }
 ```
 
@@ -179,13 +235,13 @@ actual fun getNotificationManager(): NotificationManager {
 ```kotlin
 package com.ecotrack.platform
 
-import platform.UserNotifications.UNAuthorizationOptions
 import platform.UserNotifications.UNAuthorizationOptionAlert
 import platform.UserNotifications.UNAuthorizationOptionBadge
 import platform.UserNotifications.UNAuthorizationOptionSound
+import platform.UserNotifications.UNAuthorizationStatus
 import platform.UserNotifications.UNMutableNotificationContent
 import platform.UserNotifications.UNNotificationRequest
-import platform.UserNotifications.UNTimeIntervalSinceEpoch
+import platform.UserNotifications.UNTimeIntervalTrigger
 import platform.darwin.NSUUID
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -239,11 +295,22 @@ class IOSNotificationManager : NotificationManager {
         Result.failure(e)
     }
     
-    override fun isPermissionGranted(): Boolean = 
-        platform.UserNotifications.UNUserNotificationCenter.currentNotificationCenter()
-            .getNotificationSettingsWithCompletionHandler { settings ->
-                // Проверка настроек (упрощенно)
+    /**
+     * Проверяет, разрешены ли уведомления на iOS.
+     * 
+     * iOS API асинхронный (completion handler), поэтому используем
+     * suspendCancellableCoroutine — никакого блокирующего ожидания.
+     */
+    @OptIn(ExperimentalForeignApi::class)
+    override suspend fun isPermissionGranted(): Boolean = 
+        suspendCancellableCoroutine { continuation ->
+            val center = platform.UserNotifications.UNUserNotificationCenter.currentNotificationCenter()
+            center.getNotificationSettingsWithCompletionHandler { settings, _ ->
+                val granted = settings?.authorizationStatus == UNAuthorizationStatus.UNAuthorizationStatusAuthorized ||
+                             settings?.authorizationStatus == UNAuthorizationStatus.UNAuthorizationStatusProvisional
+                continuation.resume(granted)
             }
+        }
     
     // Получение APNs токена для сервера
     suspend fun getApnsToken(): Result<String> {
@@ -263,15 +330,22 @@ actual fun getNotificationManager(): NotificationManager = IOSNotificationManage
 package com.ecotrack.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.ecotrack.domain.model.HabitEntity
+import com.ecotrack.domain.model.HabitCategory
 import com.ecotrack.domain.repository.HabitRepository
-import com.ecotrack.platform.getNotificationManager
+import com.ecotrack.platform.NotificationManager
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 
 class HabitViewModel(
     private val repository: HabitRepository,
-    private val notificationManager = getNotificationManager() // Получаем из expect/actual
+    private val notificationManager: NotificationManager  // Инжектируется через DI (Hilt/Koin)
 ) : ViewModel() {
+    
+    // Состояние для UI — пользователь видит результат запроса разрешения
+    private val _notificationPermissionGranted = MutableStateFlow(false)
+    val notificationPermissionGranted: StateFlow<Boolean> = _notificationPermissionGranted.asStateFlow()
     
     init {
         requestNotificationPermission()
@@ -279,25 +353,22 @@ class HabitViewModel(
     
     private fun requestNotificationPermission() {
         viewModelScope.launch {
-            when (val result = notificationManager.requestPermission()) {
-                is Result.Success -> {
-                    if (result.getOrNull() == true) {
-                        // Разрешение получено, можно отправлять уведомления
-                    }
-                }
-                is Result.Failure -> {
-                    // Обработка ошибки
-                }
+            val result = notificationManager.requestPermission()
+            _notificationPermissionGranted.value = result.getOrNull() ?: false
+            
+            if (result.isFailure) {
+                // Логируем ошибку, но не показываем пользователю —
+                // отсутствие разрешения не критично для работы приложения
             }
         }
     }
     
     fun addHabit(title: String, category: HabitCategory) {
         viewModelScope.launch {
-            // ... логика добавления
+            // ... логика добавления (repository.addHabit)
             
-            // Отправляем уведомление об успехе
-            if (notificationManager.isPermissionGranted()) {
+            // Отправляем уведомление об успехе (только если разрешение есть)
+            if (_notificationPermissionGranted.value) {
                 notificationManager.sendNotification(
                     title = "Привычка добавлена!",
                     body = "$title успешно сохранена"
@@ -308,10 +379,17 @@ class HabitViewModel(
     
     // Ежедневное напоминание (через WorkManager для Android / BackgroundTasks для iOS)
     fun scheduleDailyReminder() {
-        // Реализация зависит от платформы (в модуле 8)
+        // Реализация зависит от платформы (модуль 8)
     }
 }
 ```
+
+**⚠️ Почему `NotificationManager` инжектируется через DI, а не создаётся через `getNotificationManager()` внутри ViewModel?**
+
+Потому что Android-реализация требует `Activity` (для `ActivityCompat.requestPermissions`). А ViewModel не имеет доступа к Activity. В реальном приложении:
+- **Hilt:** `@Inject` + `@AndroidEntryPoint` — Activity передаётся через модуль
+- **Koin:** фабрика, которая получает Activity из `Application`-холдера
+- **commonMain** не знает о DI — просто получает интерфейс `NotificationManager`
 
 ---
 
@@ -681,3 +759,7 @@ actual fun getFileManager(): FileManager = IOSFileManager()
 - iOS: Настройка в Xcode под Signing & Capabilities
 
 Удачи! В следующем (финальном) модуле мы подготовим приложение к релизу: тестирование, оптимизация и публикация в App Store / Google Play.
+
+---
+
+> 📝 **Самопроверка:** [Квиз к Модулю 7](./quiz.md) — 15 вопросов по материалам модуля. Пройди перед переходом к следующему модулю.

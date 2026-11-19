@@ -34,7 +34,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ## 📚 Структура курса
 
-### [Модуль 1: Введение и настройка окружения](./Module_01_Introduction/content.md)
+### [Модуль 1: Введение и настройка окружения](./Module_01_Introduction/content.md) · [📝 Квиз](./Module_01_Introduction/quiz.md)
 **Что изучим:**
 - Установка Kotlin, Android Studio, Xcode
 - Создание KMP проекта с Gradle
@@ -44,7 +44,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 2: Основы Compose Multiplatform](./Module_02_Compose_Basics/content.md)
+### [Модуль 2: Основы Compose Multiplatform](./Module_02_UI_Development/content.md) · [📝 Квиз](./Module_02_UI_Development/quiz.md)
 **Что изучим:**
 - Declarative UI и Composable функции
 - Layouts: Column, Row, Box, LazyColumn
@@ -55,7 +55,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 3: Архитектура и Dependency Injection](./Module_03_Architecture/content.md)
+### [Модуль 3: Архитектура и Dependency Injection](./Module_03_Architecture/content.md) · [📝 Квиз](./Module_03_Architecture/quiz.md)
 **Что изучим:**
 - Clean Architecture (Domain, Data, UI слои)
 - Repository Pattern
@@ -65,7 +65,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 4: Работа с данными (SQLDelight)](./Module_04_Data_Layer/content.md)
+### [Модуль 4: Работа с данными (SQLDelight)](./Module_04_Database/content.md) · [📝 Квиз](./Module_04_Database/quiz.md)
 **Что изучим:**
 - SQLDelight и типобезопасные запросы
 - Миграции БД
@@ -75,7 +75,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 5: Сетевое взаимодействие (Ktor Client)](./Module_05_Networking/content.md)
+### [Модуль 5: Сетевое взаимодействие (Ktor Client)](./Module_05_Networking/content.md) · [📝 Квиз](./Module_05_Networking/quiz.md)
 **Что изучим:**
 - Ktor Client для HTTP-запросов
 - JSON сериализация (kotlinx.serialization)
@@ -86,7 +86,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 6: Продвинутый UI и Визуализация](./Module_06_Advanced_UI/content.md)
+### [Модуль 6: Продвинутый UI и Визуализация](./Module_06_Advanced_UI/content.md) · [📝 Квиз](./Module_06_Advanced_UI/quiz.md)
 **Что изучим:**
 - Кастомные компоненты на Canvas API
 - Анимации (AnimatedVisibility, updateTransition)
@@ -96,7 +96,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 7: Нативные фичи и Интеграции](./Module_07_Native_Features/content.md)
+### [Модуль 7: Нативные фичи и Интеграции](./Module_07_Native_Features/content.md) · [📝 Квиз](./Module_07_Native_Features/quiz.md)
 **Что изучим:**
 - Expect/Actual для нативных API
 - Push-уведомления (FCM для Android, APNs для iOS)
@@ -107,7 +107,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### [Модуль 8: Тестирование, Оптимизация и Релиз](./Module_08_Testing_and_Release/content.md)
+### [Модуль 8: Тестирование, Оптимизация и Релиз](./Module_08_Testing_and_Release/content.md) · [📝 Квиз](./Module_08_Testing_and_Release/quiz.md)
 **Что изучим:**
 - Unit-тесты для commonMain (JUnit 5, Kotest)
 - UI-тесты с Compose Test
@@ -124,7 +124,8 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 1. **Прочитайте теорию** модуля (30-60 минут)
 2. **Изучите примеры кода** в content.md
 3. **Выполните практическое задание** (2-4 часа)
-4. **Переходите к следующему модулю** только после сдачи текущего
+4. **Пройдите самопроверку:** квиз (`quiz.md`) лежит рядом с `content.md` в папке каждого модуля — включая Senior Track и AI Agent Track. Целевой результат указан в самом квизе
+5. **Переходите к следующему модулю** только после сдачи текущего
 
 ### Время прохождения:
 - **Модуль 1:** ~3 часа
@@ -258,7 +259,7 @@ https://www.figma.com/design/ftUrIiC2aFrWhINEU5g1j0/EcoTracker
 
 ---
 
-### Option 2: [🤖 AI Agent Track](./AI_Agent_Track/README.md) ⭐ NEW!
+### Option 2: [🤖 AI Agent Track](./AI_Agent_Track/INDEX.md) ⭐ NEW!
 **Комплексный курс по разработке с AI агентами (Cursor, Copilot):**
 
 - **Module 01:** Foundation & AI tool setup

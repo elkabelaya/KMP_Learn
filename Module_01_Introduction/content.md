@@ -96,7 +96,7 @@ MyProject/
 │       └── MainActivity.kt          ← точка входа для Android
 │
 └── iosApp/                          ← Xcode-проект (нативная обёртка)
-    └── iOSApp/
+    └── iosApp/
         └── ContentView.swift        ← точка входа для iOS
 ```
 
@@ -513,21 +513,30 @@ fun MainViewController() = ComposeUIViewController {
 
 </details>
 
-Затем в Swift-коде Xcode-проекта (`iosApp/iOSApp/ContentView.swift`):
+Затем в Swift-коде Xcode-проекта (`iosApp/iosApp/ContentView.swift`):
 
 ```swift
+import UIKit
 import SwiftUI
-import shared
+import Shared
+
+struct ComposeView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Self.Context) -> UIViewController {
+        MainViewControllerKt.MainViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Self.Context) {}
+}
 
 struct ContentView: View {
     var body: some View {
-        MainViewController()
+        ComposeView()
             .ignoresSafeArea()
     }
 }
 ```
 
-> 📌 `import shared` — это импорт Kotlin-модуля в Swift. KMP экспортирует Swift-фреймворк из commonMain/iosMain, и Xcode видит его как обычный Swift-модуль.
+> 📌 `import Shared` — это импорт Kotlin-модуля в Swift. Имя фреймворка задаётся в `shared/build.gradle.kts` через `iosTarget.binaries.framework { baseName = "Shared" }`. Топ-level Kotlin-функция `MainViewController()` экспортируется как `MainViewControllerKt.MainViewController()`, а сам `UIViewController` нужно обернуть в `UIViewControllerRepresentable`, потому что `MainViewController()` возвращает `UIViewController`, а не SwiftUI `View`.
 
 **Шаг 4: Запуск**
 
@@ -843,6 +852,5 @@ AnimatedContent(
 
 ---
 
-> 📝 **Самопроверка:** [Квиз к Модулю 1](./quiz.md) — 12 вопросов для проверки понимания. Пройди перед переходом к следующему модулю.
->
+
 > 🔜 **Следующий модуль:** Основы Compose Multiplatform. Будет про layout-систему, состояние и первые компоненты Material 3. Если этот модуль для тебя был «лёгким прогоном» — отлично, в следующих будет жарко.
