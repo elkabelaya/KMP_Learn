@@ -1,150 +1,419 @@
-# 📘 Модуль 1: Введение в Kotlin Multiplatform и настройка окружения
-
-**Добро пожаловать на курс!**  
-В этом модуле мы заложим фундамент. Вы поймете, как работает магия KMP (Kotlin Multiplatform), почему это не просто «еще один фреймворк», а философия разработки, и создадим первый набросок нашего приложения **EcoTrack**.
-
-**Цели модуля:**
-1. Понять архитектуру KMP-проекта (общий код vs платформенный)
-2. Настроить окружение для разработки под Android и iOS
-3. Освоить механизм `expect/actual`
-4. Запустить первый экран на Compose Multiplatform
-
-**Время выполнения:** ~5–7 часов.
+# Модуль 1: Введение в Kotlin Multiplatform и настройка окружения
 
 ---
 
-## 1. Введение: Зачем нам KMP?
+## С чего всё начинается
 
-Раньше, чтобы сделать приложение на Android и iOS, нужно было писать два разных проекта:
-- **Android:** Kotlin + Jetpack Compose
-- **iOS:** Swift + SwiftUI (или UIKit)
+Представь ситуацию: ты разработчик в продуктовой команде. Пришло ТЗ — сделать приложение для трекинга привычек. Дедлайн через месяц.
 
-Это означало дублирование бизнес-логики, баги в одной версии не фиксировались в другой и двойная работа по поддержке.
+И тут выясняется, что нужно **два** приложения:
+- Android-версия — на Kotlin + Compose
+- iOS-версия — на Swift + SwiftUI
 
-**Kotlin Multiplatform (KMP)** позволяет написать бизнес-логику **один раз** на Kotlin и использовать её везде.
-- **UI (Интерфейс):** Раньше это было сложно, но с появлением **Compose Multiplatform** мы можем писать UI тоже на Kotlin.
-- **Бизнес-логика:** Базы данных, сети, валидация — всё это пишется один раз.
+Два разработчика. Два стека. Две базы данных. Два набора багов. И каждый раз, когда меняется бизнес-логика (а она меняется), нужно вносить правку **дважды**. А ещё лучше — дважды с разными ошибками, потому что один разработчик что-то упустил.
 
-**Наш проект «EcoTrack»:**
-Мы будем создавать трекер эко-привычек. Пользователь нажимает кнопку «Сдал пластик», и это действие сохраняется в базе данных, отправляется на сервер и отображается в статистике. Всё это будет работать одинаково на Android, iOS и даже Desktop.
+Знакомая боль?
+
+**Kotlin Multiplatform (KMP)** — это ответ на эту боль. Одна кодовая база для бизнес-логики, которая компилируется и на Android, и на iOS, и даже на Desktop.
+
+Но давай не будем сразу прыгать в омут. Сначала разберёмся, **как именно** KMP решает эту проблему и **что из кода** можно переиспользовать, а **что** — нет.
 
 ---
 
-## 2. Теория: Структура проекта KMP
+## Что мы будем делать в этом модуле
 
-В обычном Android-проекте у вас есть папка `src/main`. В KMP структура сложнее, потому что код делится на **общий** и **платформенный**.
+| # | Задача | Время |
+|---|--------|-------|
+| 1 | Понять, как устроен KMP-проект изнутри | ~30 мин |
+| 2 | Разобраться с `expect/actual` на пальцах | ~30 мин |
+| 3 | Написать первый экран, который работает на двух платформах | ~1 час |
+| 4 | Выполнить домашнее задание | ~2 часа |
 
-### 📂 Дерево папок (упрощенно)
-```text
-src/
-├── commonMain/          <-- ОБЩИЙ КОД (Shared)
-│   └── kotlin/          <-- Логика, которая работает везде
-├── commonTest/          <-- Тесты для общего кода
-├── androidMain/         <-- КОД ТОЛЬКО ДЛЯ ANDROID
-│   └── kotlin/          <-- MainActivity, Android-специфики
-├── androidUnitTest/     <-- Тесты для Android
-├── iosMain/            <-- КОД ТОЛЬКО ДЛЯ iOS (Swift/Kotlin)
-│   └── kotlin/          <-- AppDelegate, iOS-специфики
-├── iosXCTest/           <-- Тесты для iOS
-└── ... (другие платформы)
+**Итого:** 5–7 часов. Можно растянуть на два-три вечера.
+
+> 💡 **Важно:** Для iOS-части нужен Mac с Xcode. Если у вас Windows — не паникуйте. Вы всё равно сможете писать общий код, запускать на Android, а iOS-часть просто не запускаете локально. Мы на это учтём.
+
+---
+
+## 1. Архитектура: один код — много платформ
+
+### Аналогия из жизни
+
+Думай о KMP-проекте как о **ресторане с международной франшизой**:
+
+```
+                    🏢 Корпоративный офис (commonMain)
+                    ┌─────────────────────────────────┐
+                    │  Рецепты блюд (бизнес-логика)   │
+                    │  Стандарты сервиса (UI-компоненты)│
+                    │  Бухгалтерия (модели данных)    │
+                    └─────────────────────────────────┘
+                         │                    │
+            ┌────────────┘                    └────────────┐
+            │                                              │
+   🇷🇺 Москва                      🇯🇵 Токио
+   (androidMain)                  (iosMain)
+   ┌──────────────────┐         ┌──────────────────┐
+   │ Повар-русский    │         │ Повар-японский   │
+   │ готовит по тем   │         │ готовит по тем   │
+   │ же рецептам, но  │         │ же рецептам, но  │
+   │ использует       │         │ использует       │
+   │ свои сковородки  │         │ свои ножи        │
+   │ и плиту          │         │ и духовку        │
+   └──────────────────┘         └──────────────────┘
 ```
 
-### 🔑 Ключевое правило:
-- **`commonMain`**: Здесь живет 80–90% вашего кода (бизнес-логика, модели данных, UI на Compose). Этот код компилируется и для Android, и для iOS.
-- **`androidMain` / `iosMain`**: Здесь живет код, который зависит от конкретной ОС (например, доступ к камере, уведомления, запуск приложения).
+**Корпоративный офис** (`commonMain`) — это вся логика, которая **не зависит** от платформы: расчёты, бизнес-правила, модели данных, UI-компоненты на Compose.
+
+**Филиалы** (`androidMain`, `iosMain`) — это «склейка» с платформой: запуск активности, доступ к камере, push-уведомления, работа с файловой системой.
+
+### Теперь посмотри на дерево папок
+
+Когда ты создашь KMP-проект, структура будет такой:
+
+```
+MyProject/
+├── shared/                          ← общий модуль (shared module)
+│   └── src/
+│       ├── commonMain/kotlin/       ← 🔥 80-90% кода живёт здесь
+│       │   ├── model/               ← данные, сущности
+│       │   ├── logic/               ← бизнес-логика
+│       │   ├── ui/                  ← Compose-экраны
+│       │   └── platform/            ← expect-объявления
+│       │
+│       ├── commonTest/kotlin/       ← тесты общего кода
+│       │
+│       ├── androidMain/kotlin/      ← 🤖 что-то Android-specific
+│       │   └── platform/            ← actual для Android
+│       │
+│       ├── iosMain/kotlin/          ← 🍎 что-то iOS-specific
+│       │   └── platform/            ← actual для iOS
+│       │
+│       └── desktopMain/kotlin/      ← 💻 (опционально)
+│
+├── androidApp/                      ← Android-приложение (нативная обёртка)
+│   └── src/main/kotlin/
+│       └── MainActivity.kt          ← точка входа для Android
+│
+└── iosApp/                          ← Xcode-проект (нативная обёртка)
+    └── iOSApp/
+        └── ContentView.swift        ← точка входа для iOS
+```
+
+### Ключевой вопрос: что именно можно положить в commonMain?
+
+Вот чек-лист. Отметь, что для тебя очевидно, а что — нет:
+
+| Что | В commonMain? | Почему |
+|-----|:---:|--------|
+| Модели данных (data class) | ✅ | Чистый Kotlin, не зависит от ОС |
+| Бизнес-логика (расчёты, валидация) | ✅ | Чистый Kotlin |
+| UI на Compose Multiplatform | ✅ | Компилируется под все платформы |
+| Coroutines, Flow | ✅ | Кроссплатформенные |
+| SQLDelight (БД) | ✅ | Есть драйверы для всех платформ |
+| Ktor Client (сеть) | ✅ | Есть движки для всех платформ |
+| `android.util.Log` | ❌ | Это Android API |
+| `NSFileManager` | ❌ | Это iOS API |
+| Доступ к камере | ❌ | Разные API → через expect/actual |
+| Push-уведомления | ❌ | FCM vs APNs → через expect/actual |
+| Работа с файловой системой | ❌ | Разные пути → через expect/actual |
+
+> 📌 **Правило:** Если ты используешь только `kotlin.*`, корутины, Compose, SQLDelight, Ktor — ты в `commonMain`. Нужен что-то из ОС? → `expect/actual`.
 
 ---
 
-## 3. Теория: Механизм Expect/Actual
+## 2. Expect/Actual: как одна функция живёт на двух платформах
 
-Это самая важная концепция KMP. Как сделать так, чтобы в `commonMain` мы могли вызвать функцию «Открыть камеру», хотя на Android и iOS API для этого разные?
+### Проблема
 
-Мы используем механизм **Expect/Actual**.
+Ты пишешь в `commonMain` функцию «получить имя платформы». На Android ты хочешь получить `"Android"`, на iOS — `"iOS"`. Но API у них разные. Как быть?
 
-1. В `commonMain` мы объявляем функцию как **`expect`** (ожидаем, что она будет реализована где-то еще).
-2. В `androidMain` и `iosMain` мы пишем **`actual`** (реальную реализацию) для каждой платформы.
+### Решение: объявляю контракт, а реализую отдельно
 
-### Пример кода:
+Думай об `expect` как о **заказе в ресторане**: ты говоришь «дайте мне напиток» (объявление), а бармен на каждой станции (платформа) льёт свой (реализация).
+
+```
+        commonMain (объявление):
+        ┌─────────────────────────────────────────┐
+        │  expect fun getPlatformName(): String   │  ← "я знаю, что такая функция есть"
+        └─────────────────────────────────────────┘
+                   │                        │
+                   ▼                        ▼
+        androidMain (реализация)    iosMain (реализация)
+        ┌─────────────────────────┐  ┌─────────────────────────┐
+        │ actual fun              │  │ actual fun              │
+        │ getPlatformName():      │  │ getPlatformName():      │
+        │ String = "Android"      │  │ String = "iOS"          │
+        └─────────────────────────┘  └─────────────────────────┘
+```
+
+### Код
+
+Вот как это выглядит. Три файла, три источника:
+
+**Файл 1: `shared/src/commonMain/kotlin/platform/Platform.kt`**
+
 ```kotlin
-// 📁 src/commonMain/kotlin/com.ecotrack/platform/Platform.kt
 package com.ecotrack.platform
 
-// Объявляем, что функция существует, но не пишем её тело
+// Объявляем: «такая функция существует, но я не знаю, как она работает»
 expect fun getPlatformName(): String
+```
 
-// 📁 src/androidMain/kotlin/com.ecotrack/platform/Platform.kt
+**Файл 2: `shared/src/androidMain/kotlin/platform/Platform.kt`**
+
+```kotlin
 package com.ecotrack.platform
 
 // Реализация для Android
 actual fun getPlatformName(): String = "Android"
+```
 
-// 📁 src/iosMain/kotlin/com.ecotrack/platform/Platform.kt
+**Файл 3: `shared/src/iosMain/kotlin/platform/Platform.kt`**
+
+```kotlin
 package com.ecotrack.platform
 
 // Реализация для iOS
 actual fun getPlatformName(): String = "iOS"
 ```
 
-**В `commonMain` мы просто пишем:**
+**И в любом месте `commonMain` ты просто вызываешь:**
+
 ```kotlin
-println("Привет, ${getPlatformName()}!") 
-// На Android выведет "Android", на iOS — "iOS"
+val greeting = "Привет, ${getPlatformName()}!"
+// На Android: "Привет, Android!"
+// На iOS:     "Привет, iOS!"
+```
+
+### Подводные камни
+
+> ⚠️ **Пакеты и имена должны совпадать точно.** `expect` в `commonMain` и `actual` в `androidMain` должны быть в одном и том же пакете, с тем же именем. Иначе компилятор выдаст:
+> 
+> ```
+> e: ACTUAL without corresponding EXPECT
+> ```
+
+> ⚠️ **`expect` — это не интерфейс.** Ты не можешь объявить `expect class` с методом и потом реализовать его как хочешь. `expect` — это обещание: «в каждой платформе будет соответствующий `actual`». Для более сложных случаев (разные методы в разных платформах) используй **platform-specific sealed interfaces** или **Service Locator pattern** — разберём в Модуле 7.
+
+### Когда expect/actual НЕ нужен
+
+Частая ошибка новичков — оборачивать в `expect/actual` то, что не зависит от платформы:
+
+```kotlin
+// ❌ НЕ надо так
+expect fun parseInt(s: String): Int  // это есть в stdlib, работает везде
+
+// ✅ Просто используй
+val x = "42".toInt()  // работает на всех платформах из коробки
 ```
 
 ---
 
-## 4. Практика: Создание проекта EcoTrack
+## 3. Создаём проект EcoTrack
 
-### Шаг 1: Подготовка окружения
-- **Android:** Установите Android Studio (с последним плагином Kotlin).
-- **iOS:** Для разработки под iOS **обязательно нужен Mac** с установленным Xcode. Если у вас Windows, вы сможете писать код и запускать на Android, но iOS-часть придется тестировать через облачные сервисы (например, Bitrise) или попросить коллегу с Mac.
-- **JDK:** Убедитесь, что у вас стоит JDK 17 или выше.
+### Как подойти к решению
 
-### Шаг 2: Создание проекта
-Мы используем официальный **Kotlin Multiplatform Wizard** (встроен в IntelliJ IDEA / Android Studio).
+Прежде чем нажимать кнопки в IDE, давай разберёмся, **что именно** мы делаем и **зачем** каждый шаг:
 
-1. Откройте IDE -> **New Project**.
-2. Выберите шаблон: **Kotlin Multiplatform Mobile** (или просто **Multiplatform Application**).
-3. В настройках выберите:
-   - **Target:** Android, iOS (если есть Mac).
-   - **UI Framework:** Compose Multiplatform.
-4. Назовите проект: `EcoTrack`.
-5. Нажмите **Finish**.
+1. **Выбираем wizard** — потому что создавать KMP-проект вручную (писать Gradle-скрипты, подключать плагины) — это боль. Wizard делает это за нас.
+2. **Выбираем target'ы** — это те платформы, под которые мы компилируем общий код.
+3. **Выбираем UI framework** — Compose Multiplatform даст нам декларативный UI на Kotlin.
+4. **Смотрим на build.gradle.kts** — чтобы понять, что именно настроено под капотом.
 
-### Шаг 3: Изучение `build.gradle.kts`
-Откройте файл `shared/build.gradle.kts`. Вы увидите зависимости. Обратите внимание на секцию `kotlin { ... }`:
-```kotlin
-androidTarget() // Настройка для Android
-iosX64()        // Симулятор iOS (Intel)
-iosArm64()      // Реальный iPhone (Apple Silicon)
+### Пошагово
+
+**Шаг 1: Открой Android Studio (или IntelliJ IDEA)**
+
+Минимальные требования:
+- JDK 17+ (встроенная в Android Studio подойдёт)
+- Последний плагин **Kotlin Multiplatform** (устанавливается из Plugin Repository)
+
+**Шаг 2: Создай проект**
+
 ```
+File → New → New Project → Multiplatform Mobile (или Multiplatform Application)
+```
+
+**Шаг 3: Настрой параметры**
+
+| Параметр | Значение | Зачем |
+|----------|----------|-------|
+| Project name | `EcoTrack` | Имя проекта |
+| Target | Android, iOS | Компилируем под обе |
+| UI Framework | Compose Multiplatform | Declarative UI |
+| Kotlin version | последняя стабильная | Не будем джиттерить версии |
+
+Нажми **Finish**. Подожди, пока Gradle скачает зависимости (первый раз может занять 5-10 минут).
+
+**Шаг 4: Изучи `shared/build.gradle.kts`**
+
+Открой файл. Вот ключевые секции:
+
+```kotlin
+plugins {
+    kotlin("multiplatform")
+    kotlin("plugin.compose")          // ← Compose Multiplatform
+    kotlin("plugin.serialization")    // ← для JSON (разберём в Модуле 5)
+}
+
+kotlin {
+    // ─── Целевые платформы ───
+    androidTarget {
+        // Настройки для Android
+    }
+    
+    iosX64()       // ← симулятор на Intel Mac
+    iosArm64()     // ← реальный iPhone (Apple Silicon)
+    iosSimulatorArm64() // ← симулятор на Apple Silicon (M1/M2/M3)
+    
+    // ─── Зависимости, общие для всех платформ ───
+    sourceSets {
+        val commonMain by getting {
+            dependencies {
+                implementation(compose.runtime)
+                implementation(compose.foundation)
+                implementation(compose.material3)
+                // ...
+            }
+        }
+    }
+}
+```
+
+> 📌 **Запомни:** всё, что в `commonMain` dependencies — доступно на всех платформах. Если нужна зависимость только для Android — ищи секцию `androidMain`.
+
+<details>
+<summary>🔍 Развернуть: полный build.gradle.kts (чтобы сверить с твоим)</summary>
+
+```kotlin
+plugins {
+    kotlin("multiplatform") version "2.0.20"
+    kotlin("plugin.compose") version "2.0.20"
+    kotlin("plugin.serialization") version "2.0.20"
+    id("com.android.library") version "8.3.0"
+}
+
+kotlin {
+    androidTarget {
+        compilations.all {
+            kotlinOptions {
+                jvmTarget = "17"
+            }
+        }
+    }
+    
+    iosX64()
+    iosArm64()
+    iosSimulatorArm64()
+    
+    sourceSets {
+        val commonMain by getting {
+            dependencies {
+                implementation("org.jetbrains.compose.runtime:runtime:1.6.2")
+                implementation("org.jetbrains.compose.foundation:foundation:1.6.2")
+                implementation("org.jetbrains.compose.material3:material3:1.6.2")
+                implementation("org.jetbrains.compose.ui:ui:1.6.2")
+                implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
+                implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+            }
+        }
+        val commonTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
+        val androidMain by getting
+        val iosMain by getting
+    }
+}
+
+android {
+    namespace = "com.ecotrack.shared"
+    compileSdk = 34
+    defaultConfig {
+        minSdk = 24
+    }
+}
+
+compose.runtime {
+    entryPoints = listOf("androidx.compose.ui.window.Recomposer")
+}
+```
+
+> ⚠️ Версии могут отличаться в зависимости от того, когда ты создаёшь проект. Не копируй наслепую — смотри, что сгенерировал wizard.
+
+</details>
 
 ---
 
-## 5. Практика: Первый экран на Compose Multiplatform
+## 4. Первый экран: от идеи до запуска
 
-Теперь напишем код, который будет работать и на Android, и на iOS.
+### Как подойти к решению
 
-### Шаг 1: Создаем общий UI
-Откройте файл `src/commonMain/kotlin/com/ecotrack/ui/MainScreen.kt` (или создайте его, если шаблон не создал).
+Мы хотим написать **один** Compose-экран, который будет:
+- Показывать заголовок
+- Считать клики по кнопке
+- Работать и на Android, и на iOS
 
-Мы сделаем экран приветствия с кнопкой.
+Давай разложим на шаги:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  commonMain                                                         │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │  MainScreen()                                              │    │
+│  │  ┌─────────────────────────────────────────────────────┐    │    │
+│  │  │  Text("Добро пожаловать в EcoTrack!")              │    │    │
+│  │  │  Text("Привычек добавлено: $count")               │    │    │
+│  │  │  Button("Добавить") { count++ }                    │    │    │
+│  │  └─────────────────────────────────────────────────────┘    │    │
+│  └─────────────────────────────────────────────────────────────┘    │
+│              ▲                                    ▲                  │
+│              │ import                             │ import           │
+└──────────────┼────────────────────────────────────┼──────────────────┘
+               │                                    │
+     ┌─────────┴──────────┐               ┌────────┴────────────┐
+     │  androidMain       │               │  iosMain            │
+     │  MainActivity      │               │  MainViewController │
+     │  setContent {       │              │  ComposeUIVC {      │
+     │    MainScreen()     │              │    MainScreen()     │
+     │  }                  │              │  }                  │
+     └─────────────────────┘              └─────────────────────┘
+```
+
+Видишь? **Один и тот же** `MainScreen()` вставляется в две разные «обёртки». Android-обёртка — это `ComponentActivity` с `setContent`. iOS-обёртка — это `ComposeUIViewController`. А сам экран — один, общий.
+
+### Пишем код
+
+**Шаг 1: Общий экран**
+
+Создай файл `shared/src/commonMain/kotlin/ui/MainScreen.kt`:
+
+<details>
+<summary>🔍 Развернуть: код MainScreen.kt</summary>
 
 ```kotlin
 package com.ecotrack.ui
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.ecotrack.platform.getPlatformName
 
-// Это функция, которая будет работать на ВСЕХ платформах
 @Composable
 fun MainScreen() {
-    var count by remember { mutableStateOf(0) }
+    var count by mutableIntStateOf(0)
 
     Column(
         modifier = Modifier.fillMaxSize(),
@@ -156,11 +425,18 @@ fun MainScreen() {
             style = MaterialTheme.typography.headlineMedium
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Text(
+            text = getPlatformName(),
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         Text(text = "Привычек добавлено: $count")
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(24.dp))
 
         Button(onClick = { count++ }) {
             Text("Добавить привычку")
@@ -169,8 +445,16 @@ fun MainScreen() {
 }
 ```
 
-### Шаг 2: Подключаем UI к платформам (Android)
-Откройте `src/androidMain/kotlin/com/ecotrack/MainActivity.kt`.
+> 💡 **Примечание:** Здесь мы уже используем `getPlatformName()` из модуля `platform` — тот самый `expect/actual`, который мы разбирали выше. Так что этот экран уже демонстрирует кроссплатформенность: на Android будет написано "Android", на iOS — "iOS".
+
+</details>
+
+**Шаг 2: Android-обёртка**
+
+Открой `androidApp/src/main/kotlin/MainActivity.kt`:
+
+<details>
+<summary>🔍 Развернуть: код MainActivity.kt (Android)</summary>
 
 ```kotlin
 package com.ecotrack
@@ -182,21 +466,17 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-// Импортируем наш общий экран
 import com.ecotrack.ui.MainScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        // Запускаем Compose UI
         setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    // Вызываем общий экран
                     MainScreen()
                 }
             }
@@ -205,53 +485,364 @@ class MainActivity : ComponentActivity() {
 }
 ```
 
-### Шаг 3: Подключаем UI к платформам (iOS)
-Откройте `src/iosMain/kotlin/com/ecotrack/MainViewController.kt` (или `AppDelegate`, в зависимости от шаблона).
+> 📌 **Что здесь происходит:** `ComponentActivity` — это стандартная Android-активность. Метод `setContent { }` — это мост между Activity и Compose. Внутри мы вызываем **тот же самый** `MainScreen()` из `commonMain`. Всё.
+
+</details>
+
+**Шаг 3: iOS-обёртка**
+
+В iOS-части Xcode-проекта есть Swift-файл, который создаёт `UIViewController`. Но с Compose Multiplatform мы делаем это проще — через Kotlin:
+
+Создай `shared/src/iosMain/kotlin/MainViewController.kt`:
+
+<details>
+<summary>🔍 Развернуть: код MainViewController.kt (iOS)</summary>
 
 ```kotlin
 package com.ecotrack
 
 import androidx.compose.ui.window.ComposeUIViewController
-// Импортируем наш общий экран
 import com.ecotrack.ui.MainScreen
 
-fun MainViewController() = ComposeUIViewController { 
-    // Вызываем тот же самый общий экран
-    MainScreen() 
+fun MainViewController() = ComposeUIViewController {
+    MainScreen()
 }
 ```
 
-### Шаг 4: Запуск
-1. **Android:** Выберите эмулятор в строке запуска и нажмите кнопку Play (зеленый треугольник).
-2. **iOS:** Если у вас Mac, выберите симулятор (iPhone 15) и нажмите Play.
+Вот и всё. Одна строка. `ComposeUIViewController` — это обёртка, которая создаёт `UIViewController`, внутри которого рендерится наш Compose-дерево.
 
-**Результат:** Вы должны увидеть экран с заголовком «Добро пожаловать в EcoTrack!» и кнопкой. При нажатии счетчик должен увеличиваться.
+</details>
+
+Затем в Swift-коде Xcode-проекта (`iosApp/iOSApp/ContentView.swift`):
+
+```swift
+import SwiftUI
+import shared
+
+struct ContentView: View {
+    var body: some View {
+        MainViewController()
+            .ignoresSafeArea()
+    }
+}
+```
+
+> 📌 `import shared` — это импорт Kotlin-модуля в Swift. KMP экспортирует Swift-фреймворк из commonMain/iosMain, и Xcode видит его как обычный Swift-модуль.
+
+**Шаг 4: Запуск**
+
+| Платформа | Как запустить |
+|-----------|---------------|
+| Android | Выбери эмулятор в run-конфигурации → ▶️ |
+| iOS | Выбери iOS-симулятор → ▶️ (нужен Mac) |
+
+**Ожидаемый результат:**
+
+```
+┌─────────────────────────────┐
+│                             │
+│   Добро пожаловать в        │
+│       EcoTrack!             │
+│                             │
+│         Android             │  ← на Android
+│         iOS                 │  ← на iOS
+│                             │
+│   Привычек добавлено: 0     │
+│                             │
+│  ┌───────────────────────┐  │
+│  │  Добавить привычку    │  │
+│  └───────────────────────┘  │
+│                             │
+└─────────────────────────────┘
+```
+
+Нажал кнопку 3 раза → «Привычек добавлено: 3». Одинаково на обеих платформах.
 
 ---
 
-## 📝 Домашнее задание (Модуль 1)
+## 5. Подводные камни первого модуля
 
-Чтобы закрепить материал, выполните следующие шаги в своем проекте **EcoTrack**:
+Прежде чем перейти к домашнему заданию, давай разберём 3 частые ошибки:
 
-1. **Настройка:** Убедитесь, что проект собирается и запускается на Android-эмуляторе. (Если нет Mac — пропустите запуск iOS, но проверьте код).
+### ❌ Ошибка 1: Путаница с папками
 
-2. **Изменение UI:** В файле `MainScreen.kt` измените цвет кнопки на зеленый (используйте `ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))`).
+```
+// ❌ Так делать НЕ надо
+shared/src/commonMain/kotlin/androidMain/...  ← двойная вложенность, будет конфликтовать
+```
 
-3. **Ожидание/Реализация:** Создайте свой пример `expect/actual`.
-   - В `commonMain` создайте файл `Platform.kt` с функцией `expect fun getGreeting(): String`.
-   - В `androidMain` реализуйте её: возвращает "Привет, Android!".
-   - В `iosMain` реализуйте её: возвращает "Привет, iOS!".
-   - Выведите результат этой функции на экран (добавьте `Text(text = getGreeting())` в `MainScreen`).
+**Правильно:** `commonMain` и `androidMain` — **сестринские** папки внутри `src/`, а не вложенные друг в друга.
 
-4. **Состояние:** Добавьте переменную `var isDarkMode by remember { mutableStateOf(false) }`. Сделайте кнопку, которая меняет эту переменную. Если `true` — фон экрана должен стать темным (используйте `Surface(color = if(isDarkMode) Color.Black else Color.White)`).
+```
+src/
+├── commonMain/    ← уровень 1
+├── androidMain/   ← уровень 1 (сестра commonMain)
+└── iosMain/       ← уровень 1 (сестра commonMain)
+```
 
-**Критерий сдачи:**
-- Приложение запускается.
-- Кнопка меняет счетчик.
-- Выводится текст, зависящий от платформы (Android/iOS).
+### ❌ Ошибка 2: Забыл добавить actual для всех платформ
+
+Ты объявил `expect` и написал `actual` для Android, но забыл для iOS. Компилятор для iOS упадёт:
+
+```
+e: Expected an actual declaration for 'getPlatformName(): String'
+```
+
+**Решение:** При объявлении `expect` — сразу создавай файлы `actual` для **всех** target'ов.
+
+### ❌ Ошибка 3: Неправильная версия Compose
+
+```kotlin
+// ❌ Версии Kotlin и Compose не совпадают
+kotlin("multiplatform") version "2.0.20"
+kotlin("plugin.compose") version "1.9.22"  // ← несовместимо!
+```
+
+**Решение:** Wizard подставит совместимые версии. Если меняешь одну — меняй обе.
 
 ---
 
-**💡 Совет:** Не пытайтесь запомнить весь синтаксис Gradle или Compose сразу. Главное сейчас — понять, **где** находится код и **как** он запускается на разных устройствах. В следующих модулях мы будем углубляться в детали.
+## 6. Домашнее задание
 
-Удачи! Если возникнут ошибки при сборке — проверьте версии Kotlin и Compose в `build.gradle.kts`, они должны совпадать.
+> 🎯 **Цель:** убедить себя (и компилятор), что ты понял разницу между `commonMain` и платформенными source set'ами.
+
+---
+
+### Задание 1: Измени UI
+
+**Что сделать:** Сделай кнопку зелёной.
+
+**Как думать:** В Material 3 цвет кнопки задаётся через `ButtonDefaults.buttonColors()`. Нам нужно передать `containerColor`. Импортируй `Color` из `androidx.compose.ui.graphics`.
+
+<details>
+<summary>✅ Развернуть: решение</summary>
+
+```kotlin
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.ui.graphics.Color
+
+Button(
+    onClick = { count++ },
+    colors = ButtonDefaults.buttonColors(
+        containerColor = Color(0xFF4CAF50)
+    )
+) {
+    Text("Добавить привычку")
+}
+```
+
+</details>
+
+---
+
+### Задание 2: Expect/Actual с приветствием
+
+**Что сделать:** Создай свой `expect/actual` — функцию `getGreeting(): String`.
+
+**Как думать:**
+1. В `commonMain/platform/` создай файл `Greeting.kt` — напиши `expect fun getGreeting(): String`
+2. В `androidMain/platform/` — `actual fun getGreeting() = "Привет, Android!"`
+3. В `iosMain/platform/` — `actual fun getGreeting() = "Привет, iOS!"`
+4. В `MainScreen` добавь `Text(getGreeting())` под заголовком
+
+Подсказка: пакеты должны совпадать с `expect` (тот же `package com.ecotrack.platform`).
+
+<details>
+<summary>✅ Развернуть: решение</summary>
+
+**`commonMain/platform/Greeting.kt`:**
+```kotlin
+package com.ecotrack.platform
+
+expect fun getGreeting(): String
+```
+
+**`androidMain/platform/Greeting.kt`:**
+```kotlin
+package com.ecotrack.platform
+
+actual fun getGreeting(): String = "Привет, Android!"
+```
+
+**`iosMain/platform/Greeting.kt`:**
+```kotlin
+package com.ecotrack.platform
+
+actual fun getGreeting(): String = "Привет, iOS!"
+```
+
+**В `MainScreen`:**
+```kotlin
+// Добавь после заголовка:
+Spacer(modifier = Modifier.height(8.dp))
+Text(
+    text = getGreeting(),
+    style = MaterialTheme.typography.titleMedium
+)
+```
+
+</details>
+
+---
+
+### Задание 3: Тёмная тема
+
+**Что сделать:** Добавь переключатель тёмной/светлой темы.
+
+**Как думать:**
+- Нужна переменная состояния: `var isDarkMode by mutableStateOf(false)`
+- Кнопка (или переключатель) меняет её
+- Фон экрана должен меняться: `Surface(color = if (isDarkMode) Color(0xFF1A1A2E) else Color.White)`
+
+Подсказка: оберни всё содержимое в `Surface` с динамическим `color`.
+
+<details>
+<summary>✅ Развернуть: решение</summary>
+
+```kotlin
+@Composable
+fun MainScreen() {
+    var count by mutableIntStateOf(0)
+    var isDarkMode by mutableStateOf(false)
+
+    val backgroundColor = if (isDarkMode) Color(0xFF1A1A2E) else Color.White
+    val textColor = if (isDarkMode) Color.White else Color.Black
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = backgroundColor
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "Добро пожаловать в EcoTrack!",
+                style = MaterialTheme.typography.headlineMedium,
+                color = textColor
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = getPlatformName(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Привычек добавлено: $count",
+                color = textColor
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = getGreeting(),
+                style = MaterialTheme.typography.titleMedium,
+                color = textColor
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Button(
+                onClick = { count++ },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+            ) {
+                Text("Добавить привычку")
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Button(
+                onClick = { isDarkMode = !isDarkMode },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isDarkMode) Color(0xFFFFC107) else Color(0xFF2196F3)
+                )
+            ) {
+                Text(if (isDarkMode) "☀️ Светлая тема" else "🌙 Тёмная тема")
+            }
+        }
+    }
+}
+```
+
+</details>
+
+---
+
+### Задание 4 (бонус): Счётчик с анимацией
+
+**Что сделать:** При нажатии кнопки цифра «перескакивает» с fade-эффектом.
+
+**Как думать:**
+- Используй `AnimatedContent` из `androidx.compose.animation`
+- Ключ анимации — значение `count`
+- Вход: `fadeIn + slideIn`
+- Выход: `fadeOut + slideOut`
+
+<details>
+<summary>✅ Развернуть: решение</summary>
+
+```kotlin
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.style.TextAlign
+
+AnimatedContent(
+    targetState = count,
+    transitionSpec = {
+        (fadeIn(animationSpec = tween(300)) + slideInHorizontally { it / 2 }) to
+        (fadeOut(animationSpec = tween(300)) + slideOutHorizontally { -it / 2 })
+    }
+) { currentCount ->
+    Text(
+        text = "Привычек добавлено: $currentCount",
+        style = MaterialTheme.typography.titleLarge,
+        textAlign = TextAlign.Center
+    )
+}
+```
+
+> ⚠️ `AnimatedContent` — из `androidx.compose.animation`. В `build.gradle.kts` commonMain добавь:
+> ```kotlin
+> implementation("org.jetbrains.compose.animation:animation:1.6.2")
+> ```
+
+</details>
+
+---
+
+### Критерии сдачи
+
+| Задание | Критерий | Статус |
+|---------|----------|:------:|
+| 1 | Кнопка зелёная на обеих платформах | ☐ |
+| 2 | При запуске на Android видно "Привет, Android!", на iOS — "Привет, iOS!" | ☐ |
+| 3 | Кнопка переключает фон экрана, текст остаётся читаемым | ☐ |
+| 4 | (бонус) Цифра анимируется при изменении | ☐ |
+
+---
+
+## Чек-лист перед переходом к Модулю 2
+
+- [ ] Понимаю, **зачем** нужен `commonMain` и **что** в него нельзя класть
+- [ ] Могу объяснить коллегам, как работает `expect/actual`, без заиканий
+- [ ] Мой проект запускается на Android (и на iOS, если есть Mac)
+- [ ] DOM задание сдано (минимум задания 1–3)
+- [ ] Я не боюсь открывать `build.gradle.kts` и что-то в нём менять
+
+---
+
+> 📝 **Самопроверка:** [Квиз к Модулю 1](./quiz.md) — 12 вопросов для проверки понимания. Пройди перед переходом к следующему модулю.
+>
+> 🔜 **Следующий модуль:** Основы Compose Multiplatform. Будет про layout-систему, состояние и первые компоненты Material 3. Если этот модуль для тебя был «лёгким прогоном» — отлично, в следующих будет жарко.
